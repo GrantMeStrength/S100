@@ -18,6 +18,10 @@ pub trait S100Card: Any {
     fn io_read(&mut self, port: u8) -> Option<u8>;
     fn io_write(&mut self, port: u8, data: u8);
 
+    /// Non-destructive ownership checks — used for bus tracing without side effects.
+    fn owns_mem(&self, _addr: u16) -> bool { false }
+    fn owns_io(&self, _port: u8) -> bool { false }
+
     /// Called once per emulated machine cycle (for DMA, timers, etc.).
     fn step(&mut self) {}
 }

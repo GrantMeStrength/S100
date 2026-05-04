@@ -1,55 +1,34 @@
 import { create } from 'zustand';
 import type { MachineState, TraceEntry } from '../wasm';
 import * as wasm from '../wasm';
+import { buildBootVector, buildBios, buildCcp } from '../utils/cpm';
 
-// Default machine: 64K RAM + serial on port 0/1 + simple demo ROM
-// ROM program: outputs "S-100 OK\r\n" then echoes input forever
-const DEMO_ROM_HEX = [
-  // LXI SP, 0xEFFF  (set stack)
-  '31', 'FF', 'EF',
-  // Print banner: "S-100 READY\r\n"
-  ...Array.from('S-100 READY\r\n').flatMap(ch => [
-    '3E', ch.charCodeAt(0).toString(16).padStart(2, '0').toUpperCase(), // MVI A, char
-    'D3', '00',  // OUT 0x00 (serial data)
-  ]),
-  // Echo loop
-  // poll_rx: IN 01 (status); ANI 01; JZ poll_rx
-  'DB', '01', 'E6', '01', 'CA', ...['??', '??'], // filled below
-  // IN 00 (read char)
-  'DB', '00',
-  // OUT 00 (echo)
-  'D3', '00',
-  // JMP echo loop
-  'C3', ...['??', '??'],  // filled below
-].join('');
+// ── Demo machine ───────────────────────────────────────────────────────────────
 
-// Build the ROM binary properly with correct jump addresses
 function buildDemoRom(): string {
   const rom: number[] = [];
   const push = (...bytes: number[]) => rom.push(...bytes);
   const pushStr = (s: string) => {
     for (const ch of s) {
-      push(0x3E, ch.charCodeAt(0)); // MVI A, ch
-      push(0xD3, 0x00);             // OUT 0
+      push(0x3E, ch.charCodeAt(0));
+      push(0xD3, 0x00);
     }
   };
 
-  push(0x31, 0xFF, 0xEF); // LXI SP, 0xEFFF
+  push(0x31, 0xFF, 0xEF);
   pushStr('S-100 READY\r\n');
 
   const loopAddr = rom.length;
-  push(0xDB, 0x01);          // IN 1 (status)
-  push(0xE6, 0x01);          // ANI 1
-  push(0xCA, loopAddr & 0xFF, (loopAddr >> 8) & 0xFF); // JZ loopAddr
-
-  push(0xDB, 0x00);          // IN 0 (data)
-  push(0xD3, 0x00);          // OUT 0 (echo)
-  push(0xC3, loopAddr & 0xFF, (loopAddr >> 8) & 0xFF); // JMP loopAddr
+  push(0xDB, 0x01);
+  push(0xE6, 0x01);
+  push(0xCA, loopAddr & 0xFF, (loopAddr >> 8) & 0xFF);
+  push(0xDB, 0x00);
+  push(0xD3, 0x00);
+  push(0xC3, loopAddr & 0xFF, (loopAddr >> 8) & 0xFF);
 
   return rom.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ROM at 0x0000 (CPU boot address), RAM at 0x8000-0xFFFF (covers stack at 0xEFFF)
 export const DEFAULT_MACHINE = JSON.stringify({
   name: 'S-100 Demo System',
   slots: [
@@ -60,6 +39,18 @@ export const DEFAULT_MACHINE = JSON.stringify({
   ],
 });
 
+// ── CP/M machine (64K RAM + serial + FDC) ─────────────────────────────────────
+
+export const CPM_MACHINE = JSON.stringify({
+  name: 'CP/M 2.2 System',
+  slots: [
+    { slot: 0, card: 'cpu_8080' },
+    { slot: 1, card: 'ram',    params: { base: 0, size: 65536 } },
+    { slot: 2, card: 'serial', params: { data_port: 0, status_port: 1 } },
+    { slot: 3, card: 'fdc' },
+  ],
+});
+
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export interface MachineStore {
@@ -67,6 +58,7 @@ export interface MachineStore {
   running: boolean;
   wasmReady: boolean;
   error: string | null;
+  mode: 'demo' | 'cpm';
 
   // State snapshot (polled from WASM)
   machineState: MachineState | null;
@@ -81,14 +73,20 @@ export interface MachineStore {
   // Machine config
   machineJson: string;
 
+  // Disk status (label or null for each of the 4 drives)
+  diskStatus: (string | null)[];
+
   // Actions
   initWasm: () => Promise<void>;
   loadMachine: (json: string) => void;
+  bootCpm: () => Promise<void>;
   start: () => void;
   stop: () => void;
   reset: () => void;
   sendInput: (s: string) => void;
-  tick: () => void;         // called by the run loop
+  insertDisk: (drive: number, file: File) => void;
+  ejectDisk: (drive: number) => void;
+  tick: () => void;
   clearTerminal: () => void;
 }
 
@@ -96,11 +94,13 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   running: false,
   wasmReady: false,
   error: null,
+  mode: 'demo',
   machineState: null,
   terminalOutput: '',
   traceEntries: [],
   traceCursor: 0,
   machineJson: DEFAULT_MACHINE,
+  diskStatus: [null, null, null, null],
 
   initWasm: async () => {
     try {
@@ -121,6 +121,47 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     }
   },
 
+  bootCpm: async () => {
+    try {
+      set({ running: false });
+
+      // Load CP/M machine config (64K RAM + serial + FDC)
+      wasm.loadMachine(CPM_MACHINE);
+
+      // Write boot vector (JMP 0xFA00) at 0x0000
+      const bootVec = buildBootVector();
+      wasm.loadBinary(0x0000, bootVec);
+
+      // Write minimal BIOS at 0xFA00 (LXI SP, 0xEFFF + JMP 0xDC00)
+      const bios = buildBios();
+      wasm.loadBinary(0xFA00, bios);
+
+      // Write minimal CCP at 0xDC00
+      const ccp = buildCcp();
+      wasm.loadBinary(0xDC00, ccp);
+
+      // Fetch and insert CPM22.dsk as drive A
+      const resp = await fetch('/CPM22.dsk');
+      if (!resp.ok) throw new Error(`Failed to fetch CPM22.dsk: ${resp.status}`);
+      const buf = await resp.arrayBuffer();
+      const diskData = new Uint8Array(buf);
+      wasm.insertDisk(0, diskData);
+
+      set({
+        machineJson: CPM_MACHINE,
+        mode: 'cpm',
+        terminalOutput: '',
+        traceEntries: [],
+        traceCursor: 0,
+        diskStatus: ['CPM22.dsk', null, null, null],
+        error: null,
+        running: true,
+      });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
   start: () => set({ running: true }),
   stop: () => set({ running: false }),
 
@@ -133,22 +174,42 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     wasm.sendSerialString(s);
   },
 
+  insertDisk: (drive, file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = new Uint8Array(e.target!.result as ArrayBuffer);
+      wasm.insertDisk(drive, data);
+      set(state => {
+        const diskStatus = [...state.diskStatus];
+        diskStatus[drive] = file.name;
+        return { diskStatus };
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  },
+
+  ejectDisk: (drive) => {
+    // Insert empty disk (zero bytes = eject)
+    wasm.insertDisk(drive, new Uint8Array(0));
+    set(state => {
+      const diskStatus = [...state.diskStatus];
+      diskStatus[drive] = null;
+      return { diskStatus };
+    });
+  },
+
   tick: () => {
-    // Run ~32768 cycles (~2MHz @ 16ms)
     wasm.step(32768);
 
-    // Drain serial output
     const out = wasm.getSerialOutput();
     if (out.length > 0) {
       set(state => ({
-        terminalOutput: (state.terminalOutput + out).slice(-65536), // cap at 64K chars
+        terminalOutput: (state.terminalOutput + out).slice(-65536),
       }));
     }
 
-    // Snapshot CPU state
     const machineState = wasm.getState();
 
-    // Incremental trace (up to 128 new entries per tick)
     const cursor = get().traceCursor;
     const newEntries = wasm.getTrace(cursor, 128);
     const newCursor = wasm.traceTotal();

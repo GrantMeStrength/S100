@@ -44,4 +44,5 @@ impl S100Card for RamCard {
 
     fn io_read(&mut self, _port: u8) -> Option<u8> { None }
     fn io_write(&mut self, _port: u8, _data: u8) {}
+    fn owns_mem(&self, addr: u16) -> bool { self.owns(addr).is_some() }
 }

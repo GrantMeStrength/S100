@@ -5,6 +5,7 @@ import { RegisterView } from './components/RegisterView';
 import { ChassisView } from './components/ChassisView';
 import { BusAnalyzer } from './components/BusAnalyzer';
 import { TraceViewer } from './components/TraceViewer';
+import { DiskManager } from './components/DiskManager';
 
 const CYCLES_PER_FRAME = 33333; // ~2 MHz at 60 fps
 
@@ -13,10 +14,12 @@ export default function App() {
   const start     = useMachineStore(s => s.start);
   const stop      = useMachineStore(s => s.stop);
   const reset     = useMachineStore(s => s.reset);
+  const bootCpm   = useMachineStore(s => s.bootCpm);
   const tick      = useMachineStore(s => s.tick);
   const running   = useMachineStore(s => s.running);
   const wasmReady = useMachineStore(s => s.wasmReady);
   const error     = useMachineStore(s => s.error);
+  const mode      = useMachineStore(s => s.mode);
 
   const rafRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -59,6 +62,18 @@ export default function App() {
           S-100 VIRTUAL WORKBENCH
         </span>
         <span style={{ color: '#8b949e', fontSize: 11 }}>Intel 8080 / CP/M</span>
+        {mode === 'cpm' && (
+          <span style={{
+            background: '#1f6feb33',
+            border: '1px solid #1f6feb',
+            color: '#79c0ff',
+            fontSize: 10,
+            padding: '1px 7px',
+            borderRadius: 10,
+          }}>
+            CP/M 2.2
+          </span>
+        )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           {!wasmReady ? (
@@ -73,6 +88,13 @@ export default function App() {
                 {running ? '⏹ Stop' : '▶ Run'}
               </CtrlBtn>
               <CtrlBtn onClick={reset} disabled={!wasmReady}>⟳ Reset</CtrlBtn>
+              <CtrlBtn
+                onClick={bootCpm}
+                color="#79c0ff"
+                disabled={!wasmReady || running}
+              >
+                ⚙ Boot CP/M
+              </CtrlBtn>
             </>
           )}
         </div>
@@ -109,6 +131,8 @@ export default function App() {
           <RegisterView />
           <Divider />
           <BusAnalyzer />
+          <Divider />
+          <DiskManager />
         </div>
 
         {/* Right column: terminal + trace */}

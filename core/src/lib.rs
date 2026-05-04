@@ -102,4 +102,17 @@ impl Emulator {
             self.machine.send_serial_input(b);
         }
     }
+
+    /// Insert a disk image into the specified drive (0=A, 1=B, 2=C, 3=D).
+    #[wasm_bindgen(js_name = insertDisk)]
+    pub fn insert_disk(&mut self, drive: u8, data: &[u8]) {
+        self.machine.insert_disk(drive, data.to_vec());
+    }
+
+    /// Retrieve the current contents of a disk drive image (for saving).
+    /// Returns an empty array if drive is not inserted.
+    #[wasm_bindgen(js_name = getDiskData)]
+    pub fn get_disk_data(&self, drive: u8) -> Vec<u8> {
+        self.machine.get_disk_data(drive).unwrap_or_default()
+    }
 }

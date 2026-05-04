@@ -64,4 +64,8 @@ impl S100Card for SerialCard {
         }
         // Writes to status port are ignored
     }
+
+    fn owns_io(&self, port: u8) -> bool {
+        port == self.data_port || port == self.status_port
+    }
 }

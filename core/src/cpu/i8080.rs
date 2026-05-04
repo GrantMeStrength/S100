@@ -57,6 +57,10 @@ pub struct Cpu8080 {
     pub halted: bool,
     pub interrupts_enabled: bool,
     pub cycles: u64,
+    /// Set when CPU intercepts CALL 0x0005 (BDOS entry). Machine handles the call.
+    pub bdos_pending: bool,
+    /// Address of the CALL 0x0005 instruction (so Machine can re-issue it if waiting).
+    pub bdos_call_pc: u16,
 }
 
 impl Cpu8080 {
@@ -69,6 +73,8 @@ impl Cpu8080 {
             halted: false,
             interrupts_enabled: false,
             cycles: 0,
+            bdos_pending: false,
+            bdos_call_pc: 0,
         }
     }
 
@@ -311,6 +317,7 @@ impl Cpu8080 {
             return 4;
         }
 
+        let opcode_pc = self.pc; // saved before fetch for BDOS trap
         let opcode = self.fetch_byte(bus);
 
         // ── MOV group 0x40-0x7F ───────────────────────────────────────────
@@ -488,10 +495,19 @@ impl Cpu8080 {
             // CALL and conditional calls
             0xCD => {
                 let addr = self.fetch_word(bus);
-                let ret = self.pc;
-                self.push(ret, bus);
-                self.pc = addr;
-                17
+                // Trap CALL 0x0005 (BDOS entry) — Machine handles the call.
+                if addr == 0x0005 {
+                    self.bdos_pending = true;
+                    self.bdos_call_pc = opcode_pc;
+                    // PC already points to the instruction after CALL (return address).
+                    // Do not push or jump; Machine will set result registers and continue.
+                    17
+                } else {
+                    let ret = self.pc;
+                    self.push(ret, bus);
+                    self.pc = addr;
+                    17
+                }
             }
             0xDD | 0xED | 0xFD => { // undoc CALL
                 let addr = self.fetch_word(bus);

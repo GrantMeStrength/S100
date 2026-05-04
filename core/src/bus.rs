@@ -69,20 +69,11 @@ impl BusInterface for Bus {
 
     fn mem_write(&mut self, addr: u16, data: u8) {
         self.cycle_count += 1;
-        let mut handled = false;
-        // Collect name of first responder for trace
         let mut source = String::from("none");
         for card in &mut self.cards {
-            // Writes are broadcast; cards filter by address internally.
-            // We note the first card that would own this address for trace purposes.
-            if !handled {
-                // Peek with a temp read to see if card owns this address
-                // Actually just write to all; cards guard internally.
-                let before = card.memory_read(addr);
-                if before.is_some() {
-                    source = card.name().to_owned();
-                    handled = true;
-                }
+            // Use owns_mem for ownership check — avoids triggering memory_read side effects.
+            if card.owns_mem(addr) && source == "none" {
+                source = card.name().to_owned();
             }
             card.memory_write(addr, data);
         }
@@ -117,7 +108,9 @@ impl BusInterface for Bus {
         self.cycle_count += 1;
         let mut source = String::from("none");
         for card in &mut self.cards {
-            if card.io_read(port).is_some() && source == "none" {
+            // Use owns_io for ownership check — avoids triggering destructive side effects
+            // that io_read() might have (e.g. FDC triggering a disk read).
+            if card.owns_io(port) && source == "none" {
                 source = card.name().to_owned();
             }
             card.io_write(port, data);

@@ -90,3 +90,11 @@ export function sendSerialInput(byte: number): void {
 export function sendSerialString(s: string): void {
   getEmulator().sendSerialString(s);
 }
+
+export function insertDisk(drive: number, data: Uint8Array): void {
+  getEmulator().insertDisk(drive, data);
+}
+
+export function getDiskData(drive: number): Uint8Array {
+  return getEmulator().getDiskData(drive);
+}
