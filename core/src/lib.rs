@@ -115,3 +115,122 @@ impl Emulator {
         self.machine.get_disk_data(drive).unwrap_or_default()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::machine::Machine;
+
+    fn b64_encode(data: &[u8]) -> String {
+        const C: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::new();
+        let mut i = 0;
+        while i < data.len() {
+            let b0 = data[i] as u32;
+            let b1 = if i+1 < data.len() { data[i+1] as u32 } else { 0 };
+            let b2 = if i+2 < data.len() { data[i+2] as u32 } else { 0 };
+            let n = (b0 << 16) | (b1 << 8) | b2;
+            out.push(C[((n >> 18) & 63) as usize] as char);
+            out.push(C[((n >> 12) & 63) as usize] as char);
+            out.push(if i+1 < data.len() { C[((n >>  6) & 63) as usize] as char } else { '=' });
+            out.push(if i+2 < data.len() { C[( n        & 63) as usize] as char } else { '=' });
+            i += 3;
+        }
+        out
+    }
+
+    fn run_monitor(rom_path: &str, base: u64, entry: u16,
+                   data_port: u64, status_port: u64, srx_bit: u64, stx_bit: u64,
+                   srx_inv: bool, stx_inv: bool) -> String {
+        let rom = match std::fs::read(rom_path) {
+            Ok(r) => r,
+            Err(_) => return String::from("SKIP"),
+        };
+        let b64 = b64_encode(&rom);
+        let json = format!(r#"{{"name":"T","slots":[
+            {{"slot":0,"card":"cpu_8080","params":{{}}}},
+            {{"slot":1,"card":"ram","params":{{"base":0,"size":{base}}}}},
+            {{"slot":2,"card":"serial","params":{{"data_port":{data_port},"status_port":{status_port},
+                "status_rx_bit":{srx_bit},"status_tx_bit":{stx_bit},
+                "status_rx_invert":{srx_inv},"status_tx_invert":{stx_inv}}}}},
+            {{"slot":3,"card":"rom","params":{{"base":{base},"data_base64":"{b64}"}}}}
+        ]}}"#);
+        let mut m = Machine::new();
+        m.load_config(&json).expect("load_config");
+        m.write_memory(0, 0xC3);
+        m.write_memory(1, (entry & 0xFF) as u8);
+        m.write_memory(2, (entry >> 8) as u8);
+        let mut output = String::new();
+        for _ in 0..400 {
+            m.step(50_000);
+            let out = m.get_serial_output();
+            if !out.is_empty() {
+                output.push_str(&String::from_utf8_lossy(&out));
+                if output.len() > 32 { break; }
+            }
+        }
+        output
+    }
+
+    #[test]
+    fn test_ssm_monitor_boots() {
+        // SSM AIO: data=0x01, status=0x00, inverted polarity
+        let out = run_monitor("../web/public/roms/ssm_mon.bin", 61440, 0xF000,
+                              1, 0, 0, 7, true, true);
+        if out == "SKIP" { return; }
+        eprintln!("SSM output: {:?}", out);
+        assert!(out.contains("MONITOR"), "SSM banner missing, got: {:?}", out);
+    }
+
+    #[test]
+    fn test_amon_monitor_boots() {
+        // AMON: 88-2SIO data=0x11, status=0x10, normal polarity
+        let out = run_monitor("../web/public/roms/amon31.bin", 61440, 0xF800,
+                              0x11, 0x10, 0, 1, false, false);
+        if out == "SKIP" { return; }
+        eprintln!("AMON output: {:?}", out);
+        assert!(out.len() > 2, "AMON produced no output: {:?}", out);
+    }
+
+    #[test]
+    fn test_cpm_bdos_conout() {
+        // Minimal test: BDOS fn 2 (CONOUT) outputs a character
+        use crate::machine::Machine;
+        let json = r#"{"name":"CPM","slots":[
+            {"slot":0,"card":"cpu_8080","params":{}},
+            {"slot":1,"card":"ram","params":{"base":0,"size":65536}},
+            {"slot":2,"card":"serial","params":{"data_port":0,"status_port":1}},
+            {"slot":3,"card":"fdc"}
+        ]}"#;
+        let mut m = Machine::new();
+        m.load_config(json).expect("load_config");
+
+        // Write tiny program at 0x0000:
+        //   MVI C, 2       ; BDOS fn 2 = CONOUT
+        //   MVI E, 'A'     ; char to print
+        //   CALL 0x0005    ; BDOS entry
+        //   MVI E, '>'
+        //   CALL 0x0005
+        //   HLT
+        let prog: &[u8] = &[
+            0x0E, 0x02,              // MVI C, 2
+            0x1E, b'A',              // MVI E, 'A'
+            0xCD, 0x05, 0x00,        // CALL 0x0005
+            0x1E, b'>',              // MVI E, '>'
+            0xCD, 0x05, 0x00,        // CALL 0x0005
+            0x76,                    // HLT
+        ];
+        for (i, &b) in prog.iter().enumerate() { m.write_memory(i as u16, b); }
+        // Note: CALL 0x0005 is intercepted by the CPU trap before it executes.
+        // Don't write anything to address 5 — the trap handles it.
+
+        let mut output = String::new();
+        for _ in 0..20 {
+            m.step(10_000);
+            let out = m.get_serial_output();
+            if !out.is_empty() { output.push_str(&String::from_utf8_lossy(&out)); }
+        }
+        eprintln!("BDOS CONOUT test output: {:?}", output);
+        assert!(output.contains("A>"), "BDOS CONOUT should output 'A>', got: {:?}", output);
+    }
+}
+
