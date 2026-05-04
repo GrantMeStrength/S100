@@ -36,13 +36,30 @@ export function Terminal() {
     ctx.font = FONT;
     ctx.textBaseline = 'top';
 
-    // Split into lines, keep last ROWS
-    const lines = output.split('\n');
+    // Process raw output: handle BS (0x08), DEL (0x7F), CR (\r)
+    const lines: string[] = [];
+    let cur = '';
+    for (let i = 0; i < output.length; i++) {
+      const ch = output[i];
+      if (ch === '\r') {
+        // CR: move to start of current line (next \n will commit)
+        cur = '';
+      } else if (ch === '\n') {
+        lines.push(cur);
+        cur = '';
+      } else if (ch === '\x08' || ch === '\x7f') {
+        // Backspace / rubout
+        if (cur.length > 0) cur = cur.slice(0, -1);
+      } else if (ch >= ' ' || ch === '\t') {
+        cur += ch;
+      }
+    }
+    lines.push(cur); // current (last) line
+
     const visible = lines.slice(Math.max(0, lines.length - ROWS));
 
     visible.forEach((line, row) => {
       ctx.fillStyle = '#c9d1d9';
-      // Truncate to COLS chars
       ctx.fillText(line.slice(0, COLS), 4, row * CHAR_H + 2);
     });
 
@@ -63,9 +80,17 @@ export function Terminal() {
     e.preventDefault();
     const key = e.key;
     if (key === 'Enter') {
-      sendInput('\r\n');
-    } else if (key === 'Backspace') {
-      sendInput('\x08');
+      sendInput('\r');
+    } else if (key === 'Backspace' || key === 'Delete') {
+      sendInput('\x7f');
+    } else if (key === 'ArrowUp') {
+      sendInput('\x1b[A');
+    } else if (key === 'ArrowDown') {
+      sendInput('\x1b[B');
+    } else if (key === 'ArrowRight') {
+      sendInput('\x1b[C');
+    } else if (key === 'ArrowLeft') {
+      sendInput('\x1b[D');
     } else if (key.length === 1) {
       sendInput(e.ctrlKey ? String.fromCharCode(key.charCodeAt(0) & 0x1F) : key);
     }

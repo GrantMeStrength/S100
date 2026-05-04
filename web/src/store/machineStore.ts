@@ -157,6 +157,8 @@ export interface SystemPreset {
   machine: string;   // JSON
   /** If set, boots CP/M after loading (fetches disk image). */
   cpm?: boolean;
+  /** If set, fetch this ROM binary and inject as data_base64 into the 'rom' card slot. */
+  romUrl?: string;
 }
 
 export const SYSTEM_PRESETS: SystemPreset[] = [
@@ -195,10 +197,38 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     cpm: true,
   },
   {
+    id: 'memon80',
+    label: 'Memon/80 v3.06 Monitor (JAIR)',
+    romUrl: '/roms/memon80.bin',
+    machine: JSON.stringify({
+      name: 'Memon/80 Monitor',
+      slots: [
+        { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
+        { slot: 1, card: 'ram',    params: { base: 0, size: 0xF800 } },
+        // JAIR Z80 SIO: TX on 0x20, RX on 0x28, status on 0x25 (bit0=RX, bit5=TX)
+        { slot: 2, card: 'serial', params: { tx_port: 0x20, rx_port: 0x28, status_port: 0x25, status_rx_bit: 0, status_tx_bit: 5 } },
+        { slot: 3, card: 'rom',    params: { base: 0xF800 } },
+      ],
+    }),
+  },
+  {
+    id: 'altmon',
+    label: 'ALTMON Monitor (Altair 8800)',
+    romUrl: '/roms/altmon.bin',
+    machine: JSON.stringify({
+      name: 'ALTMON Monitor',
+      slots: [
+        { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
+        { slot: 1, card: 'ram',    params: { base: 0, size: 0xF800 } },
+        { slot: 2, card: 'serial', params: { data_port: 0x11, status_port: 0x10 } },
+        { slot: 3, card: 'rom',    params: { base: 0xF800 } },
+      ],
+    }),
+  },
+  {
     id: 'bare',
     label: 'Bare S-100 Bus',
     machine: JSON.stringify({
-      name: 'Bare S-100 System',
       slots: [
         { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
         { slot: 1, card: 'ram', params: { base: 0, size: 65536 } },
@@ -350,17 +380,51 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   loadPreset: async (presetId) => {
     const preset = SYSTEM_PRESETS.find(p => p.id === presetId);
     if (!preset) return;
+
+    // Parse the preset's base config
+    const { name, slots, actions } = parseMachineConfig(preset.machine);
+
+    // Reset UI state eagerly — even if WASM load fails, old machine state won't linger
+    // (fixes e.g. IMSAI LEDs persisting after switching to a non-IMSAI preset)
+    set({
+      running: false, machineState: null, machineName: name, slots, actions,
+      actionsApplied: false, terminalOutput: '', traceEntries: [], traceCursor: 0,
+      diskStatus: [null, null, null, null] as (string|null)[], error: null,
+    });
+
     try {
-      set({ running: false });
-      wasm.loadMachine(preset.machine);
-      const { name, slots, actions } = parseMachineConfig(preset.machine);
-      const base = {
-        machineJson: preset.machine, slots, machineName: name, actions, actionsApplied: false,
-        error: null, terminalOutput: '', traceEntries: [], traceCursor: 0,
-        diskStatus: [null, null, null, null] as (string|null)[],
-      };
+      // Resolve ROM image if the preset references one
+      let machineJson = preset.machine;
+      if (preset.romUrl) {
+        const romResp = await fetch(preset.romUrl);
+        if (!romResp.ok) throw new Error(`Failed to fetch ROM ${preset.romUrl}: ${romResp.status}`);
+        const romBuf = await romResp.arrayBuffer();
+        const romBytes = new Uint8Array(romBuf);
+        // Base64-encode in chunks to avoid call-stack overflow on large ROMs
+        let b64 = '';
+        for (let i = 0; i < romBytes.length; i += 0x8000) {
+          b64 += btoa(String.fromCharCode(...romBytes.subarray(i, i + 0x8000)));
+        }
+        // Inject data_base64 into the first 'rom' card slot
+        const obj = JSON.parse(machineJson) as { slots: Array<{ card: string; params?: Record<string,unknown> }> };
+        for (const slot of obj.slots) {
+          if (slot.card === 'rom') {
+            slot.params = { ...(slot.params ?? {}), data_base64: b64 };
+            break;
+          }
+        }
+        machineJson = JSON.stringify(obj);
+      }
+
+      wasm.loadMachine(machineJson);
+
+      // For ROM monitor presets: plant JMP 0xF800 at reset vector 0x0000
+      // (8080 always resets to 0x0000; monitors live at 0xF800)
+      if (preset.romUrl) {
+        wasm.loadBinary(0x0000, new Uint8Array([0xC3, 0x00, 0xF8]));
+      }
+
       if (preset.cpm) {
-        // Wire up CP/M binaries and disk image
         wasm.loadBinary(0x0000, buildBootVector());
         wasm.loadBinary(0xFA00, buildBios());
         wasm.loadBinary(0xDC00, buildCcp());
@@ -368,9 +432,9 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
         if (!resp.ok) throw new Error(`Failed to fetch CPM22.dsk: ${resp.status}`);
         const buf = await resp.arrayBuffer();
         wasm.insertDisk(0, new Uint8Array(buf));
-        set({ ...base, mode: 'cpm', diskStatus: ['CPM22.dsk', null, null, null] });
+        set({ machineJson, mode: 'cpm', diskStatus: ['CPM22.dsk', null, null, null] });
       } else {
-        set({ ...base, mode: 'demo' });
+        set({ machineJson, mode: 'demo' });
       }
     } catch (e) {
       set({ error: String(e) });
