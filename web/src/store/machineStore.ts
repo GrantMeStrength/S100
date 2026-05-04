@@ -3,6 +3,50 @@ import type { MachineState, TraceEntry } from '../wasm';
 import * as wasm from '../wasm';
 import { buildBootVector, buildBios, buildCcp } from '../utils/cpm';
 
+// ── Slot / config types ────────────────────────────────────────────────────────
+
+export interface SlotEntry {
+  slot: number;
+  card: string;
+  params: Record<string, unknown>;
+}
+
+function parseMachineSlots(json: string): { name: string; slots: SlotEntry[] } {
+  try {
+    const m = JSON.parse(json) as { name?: string; slots?: unknown[] };
+    const slots: SlotEntry[] = (m.slots ?? []).map((s) => {
+      const e = s as Record<string, unknown>;
+      return {
+        slot: e.slot as number,
+        card: e.card as string,
+        params: (e.params ?? {}) as Record<string, unknown>,
+      };
+    });
+    return { name: m.name ?? 'S-100 System', slots };
+  } catch {
+    return { name: 'S-100 System', slots: [] };
+  }
+}
+
+/** Serialise slots back to machine JSON, stripping UI-only keys (prefixed _). */
+function slotsToJson(name: string, slots: SlotEntry[]): string {
+  return JSON.stringify({
+    name,
+    slots: slots
+      .slice()
+      .sort((a, b) => a.slot - b.slot)
+      .map(s => {
+        const clean: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(s.params)) {
+          if (!k.startsWith('_')) clean[k] = v;
+        }
+        const entry: Record<string, unknown> = { slot: s.slot, card: s.card };
+        if (Object.keys(clean).length > 0) entry.params = clean;
+        return entry;
+      }),
+  });
+}
+
 // ── Demo machine ───────────────────────────────────────────────────────────────
 
 function buildDemoRom(): string {
@@ -72,6 +116,8 @@ export interface MachineStore {
 
   // Machine config
   machineJson: string;
+  slots: SlotEntry[];
+  machineName: string;
 
   // Disk status (label or null for each of the 4 drives)
   diskStatus: (string | null)[];
@@ -88,7 +134,15 @@ export interface MachineStore {
   ejectDisk: (drive: number) => void;
   tick: () => void;
   clearTerminal: () => void;
+
+  // Card config actions (each reloads the WASM machine)
+  addCard: (slotIndex: number, cardId: string, params?: Record<string, unknown>) => void;
+  removeCard: (slotIndex: number) => void;
+  moveCard: (fromSlot: number, toSlot: number) => void;
+  updateCardParams: (slotIndex: number, params: Record<string, unknown>) => void;
 }
+
+const defaultParsed = parseMachineSlots(DEFAULT_MACHINE);
 
 export const useMachineStore = create<MachineStore>((set, get) => ({
   running: false,
@@ -100,6 +154,8 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   traceEntries: [],
   traceCursor: 0,
   machineJson: DEFAULT_MACHINE,
+  slots: defaultParsed.slots,
+  machineName: defaultParsed.name,
   diskStatus: [null, null, null, null],
 
   initWasm: async () => {
@@ -115,7 +171,8 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   loadMachine: (json) => {
     try {
       wasm.loadMachine(json);
-      set({ machineJson: json, error: null, terminalOutput: '' });
+      const { name, slots } = parseMachineSlots(json);
+      set({ machineJson: json, slots, machineName: name, error: null, terminalOutput: '', running: false, mode: 'demo' });
     } catch (e) {
       set({ error: String(e) });
     }
@@ -149,6 +206,8 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
 
       set({
         machineJson: CPM_MACHINE,
+        slots: parseMachineSlots(CPM_MACHINE).slots,
+        machineName: 'CP/M 2.2 System',
         mode: 'cpm',
         terminalOutput: '',
         traceEntries: [],
@@ -222,4 +281,49 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   },
 
   clearTerminal: () => set({ terminalOutput: '' }),
+
+  // ── Card config actions ──────────────────────────────────────────────────────
+
+  addCard: (slotIndex, cardId, params = {}) => {
+    const state = get();
+    const newSlots: SlotEntry[] = [
+      ...state.slots.filter(s => s.slot !== slotIndex),
+      { slot: slotIndex, card: cardId, params },
+    ].sort((a, b) => a.slot - b.slot);
+    const json = slotsToJson(state.machineName, newSlots);
+    try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
+    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo',
+          terminalOutput: '', traceEntries: [], traceCursor: 0, diskStatus: [null,null,null,null] });
+  },
+
+  removeCard: (slotIndex) => {
+    const state = get();
+    const newSlots = state.slots.filter(s => s.slot !== slotIndex);
+    const json = slotsToJson(state.machineName, newSlots);
+    try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
+    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo',
+          terminalOutput: '', traceEntries: [], traceCursor: 0, diskStatus: [null,null,null,null] });
+  },
+
+  moveCard: (fromSlot, toSlot) => {
+    const state = get();
+    const newSlots = state.slots.map(s => {
+      if (s.slot === fromSlot) return { ...s, slot: toSlot };
+      if (s.slot === toSlot)   return { ...s, slot: fromSlot };
+      return s;
+    }).sort((a, b) => a.slot - b.slot);
+    const json = slotsToJson(state.machineName, newSlots);
+    try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
+    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo',
+          terminalOutput: '', traceEntries: [], traceCursor: 0, diskStatus: [null,null,null,null] });
+  },
+
+  updateCardParams: (slotIndex, params) => {
+    const state = get();
+    const newSlots = state.slots.map(s => s.slot === slotIndex ? { ...s, params } : s);
+    const json = slotsToJson(state.machineName, newSlots);
+    try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
+    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo',
+          terminalOutput: '', traceEntries: [], traceCursor: 0, diskStatus: [null,null,null,null] });
+  },
 }));

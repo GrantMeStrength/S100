@@ -3,6 +3,7 @@ import { useMachineStore } from './store/machineStore';
 import { Terminal } from './components/Terminal';
 import { RegisterView } from './components/RegisterView';
 import { ChassisView } from './components/ChassisView';
+import { CardLibrary } from './components/CardLibrary';
 import { BusAnalyzer } from './components/BusAnalyzer';
 import { TraceViewer } from './components/TraceViewer';
 import { DiskManager } from './components/DiskManager';
@@ -113,16 +114,30 @@ export default function App() {
       )}
 
       {/* ── Main layout ───────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', gap: 0 }}>
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
-        {/* Left column: chassis + registers */}
+        {/* Column 1: Card library */}
         <div style={{
-          width: 300,
+          width: 190,
+          borderRight: '1px solid #30363d',
+          padding: 10,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          overflowY: 'auto',
+          flexShrink: 0,
+        }}>
+          <CardLibrary />
+        </div>
+
+        {/* Column 2: Chassis + tools */}
+        <div style={{
+          width: 290,
           borderRight: '1px solid #30363d',
           padding: 12,
           display: 'flex',
           flexDirection: 'column',
-          gap: 16,
+          gap: 14,
           overflowY: 'auto',
           flexShrink: 0,
         }}>

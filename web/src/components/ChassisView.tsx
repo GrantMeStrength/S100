@@ -1,88 +1,149 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useMachineStore } from '../store/machineStore';
+import type { SlotEntry } from '../store/machineStore';
+import { getCardType, CARD_TYPES } from '../config/cardTypes';
+import { CardConfigModal } from './CardConfigModal';
 
-// Slot colors for known card types
-function cardColor(name: string): string {
-  if (name.includes('ram'))    return '#1c4a2e';
-  if (name.includes('rom'))    return '#1c2e4a';
-  if (name.includes('serial')) return '#4a2e1c';
-  if (name.includes('cpu'))    return '#3d1c4a';
-  return '#252b35';
-}
+const NUM_SLOTS = 16;
 
-function cardLabel(name: string): string {
-  if (name.includes('ram'))    return 'RAM';
-  if (name.includes('rom'))    return 'ROM';
-  if (name.includes('serial')) return 'SIO';
-  if (name.includes('cpu'))    return 'CPU';
-  return name.slice(0, 6).toUpperCase();
-}
+const iconBtn: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  color: '#8b949e',
+  cursor: 'pointer',
+  fontSize: 12,
+  padding: '2px 5px',
+  flexShrink: 0,
+  lineHeight: 1,
+};
 
 export function ChassisView() {
-  const state = useMachineStore(s => s.machineState);
-  const machineName = state?.name ?? 'S-100 System';
-  const cards = state?.cards ?? [];
+  const slots      = useMachineStore(s => s.slots);
+  const machineName = useMachineStore(s => s.machineName);
+  const addCard    = useMachineStore(s => s.addCard);
+  const removeCard = useMachineStore(s => s.removeCard);
+  const moveCard   = useMachineStore(s => s.moveCard);
 
-  // Always show 22 slots (typical S-100 backplane)
-  const slots = Array.from({ length: 22 }, (_, i) => cards[i] ?? null);
+  const [configSlot, setConfigSlot] = useState<number | null>(null);
+  const [dragOver,   setDragOver]   = useState<number | null>(null);
+
+  const slotMap = new Map(slots.map(s => [s.slot, s]));
+
+  const handleDragStart = (e: React.DragEvent, slotIndex: number) => {
+    e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'chassis_card', slotIndex }));
+  };
+
+  const handleDrop = (e: React.DragEvent, targetSlot: number) => {
+    e.preventDefault();
+    setDragOver(null);
+    try {
+      const raw = e.dataTransfer.getData('text/plain');
+      if (!raw) return;
+      const data = JSON.parse(raw) as { type: string; slotIndex?: number; cardId?: string };
+      if (data.type === 'chassis_card' && data.slotIndex !== undefined) {
+        if (data.slotIndex !== targetSlot) moveCard(data.slotIndex, targetSlot);
+      } else if (data.type === 'library_card' && data.cardId) {
+        const ct = CARD_TYPES.find(c => c.id === data.cardId);
+        if (ct) addCard(targetSlot, data.cardId, { ...ct.defaultParams });
+      }
+    } catch { /* ignore */ }
+  };
+
+  const configEntry: SlotEntry | undefined = configSlot !== null ? slotMap.get(configSlot) : undefined;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ color: '#8b949e', fontSize: 12 }}>CHASSIS — {machineName}</span>
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <span style={{ color: '#8b949e', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>
+          Chassis — {machineName}
+        </span>
 
-      {/* Backplane rail */}
-      <div style={{
-        background: '#161b22',
-        border: '1px solid #30363d',
-        borderRadius: 4,
-        padding: '6px 4px',
-        display: 'flex',
-        gap: 3,
-        flexWrap: 'wrap',
-      }}>
-        {slots.map((card, i) => (
-          <div
-            key={i}
-            title={card ?? `Empty slot ${i}`}
-            style={{
-              width: 32,
-              height: 56,
-              background: card ? cardColor(card) : '#0d1117',
-              border: `1px solid ${card ? '#30363d' : '#1c2128'}`,
-              borderRadius: 2,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '4px 0',
-              cursor: card ? 'pointer' : 'default',
-            }}
-          >
-            {/* Card gold edge connector */}
-            <div style={{
-              width: '80%',
-              height: 6,
-              background: card ? '#b8860b' : '#1a1a1a',
-              borderRadius: 1,
-            }} />
-            <span style={{
-              fontSize: 8,
-              color: card ? '#c9d1d9' : '#30363d',
-              textAlign: 'center',
-              lineHeight: '1.1',
-              padding: '0 2px',
-            }}>
-              {card ? cardLabel(card) : String(i).padStart(2, '0')}
-            </span>
-            <div style={{
-              width: '80%',
-              height: 6,
-              background: card ? '#b8860b' : '#1a1a1a',
-              borderRadius: 1,
-            }} />
-          </div>
-        ))}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {Array.from({ length: NUM_SLOTS }, (_, i) => {
+            const entry = slotMap.get(i);
+            const info  = entry ? getCardType(entry.card) : undefined;
+            const over  = dragOver === i;
+
+            return (
+              <div
+                key={i}
+                onDragOver={e => { e.preventDefault(); setDragOver(i); }}
+                onDragLeave={() => setDragOver(null)}
+                onDrop={e => handleDrop(e, i)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '3px 6px',
+                  background: over ? '#1c2840' : (entry ? '#0d1117' : 'transparent'),
+                  border: `1px solid ${over ? '#3b82f6' : (entry ? '#30363d' : '#1c2128')}`,
+                  borderRadius: 3,
+                  minHeight: 30,
+                  transition: 'border-color 0.1s, background 0.1s',
+                }}
+              >
+                <span style={{ color: '#484f58', fontSize: 9, width: 14, textAlign: 'right', flexShrink: 0, fontFamily: 'monospace' }}>
+                  {String(i).padStart(2, '0')}
+                </span>
+
+                {entry && info ? (
+                  <>
+                    <div
+                      draggable
+                      onDragStart={e => handleDragStart(e, i)}
+                      title="Drag to move"
+                      style={{
+                        background: info.color,
+                        border: `1px solid ${info.accent}`,
+                        borderRadius: 2,
+                        padding: '1px 5px',
+                        fontSize: 9,
+                        color: info.accent,
+                        fontFamily: 'monospace',
+                        cursor: 'grab',
+                        flexShrink: 0,
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      {info.shortLabel}
+                    </div>
+
+                    <span style={{ color: '#c9d1d9', fontSize: 11, flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                      {info.label}
+                    </span>
+
+                    {(info.configFields.length > 0 || !!info.stub) && (
+                      <button
+                        onClick={() => setConfigSlot(i)}
+                        title="Configure"
+                        style={iconBtn}
+                      >⚙</button>
+                    )}
+
+                    <button
+                      onClick={() => removeCard(i)}
+                      title="Remove card"
+                      style={{ ...iconBtn, color: '#f85149' }}
+                    >✕</button>
+                  </>
+                ) : (
+                  <span style={{ color: '#30363d', fontSize: 10, fontStyle: 'italic', flex: 1 }}>
+                    {over ? '↓ drop here' : 'empty'}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
+
+      {configSlot !== null && configEntry && (
+        <CardConfigModal
+          slot={configSlot}
+          entry={configEntry}
+          onClose={() => setConfigSlot(null)}
+        />
+      )}
+    </>
   );
 }
