@@ -1,0 +1,16 @@
+# Rust build artifacts
+/core/target/
+/core/pkg/
+
+# wasm-pack generated (web consumes from src/wasm/pkg)
+/web/src/wasm/pkg/*.wasm
+/web/src/wasm/pkg/*.js
+/web/src/wasm/pkg/*.ts
+/web/src/wasm/pkg/package.json
+
+# Node / Vite
+/web/node_modules/
+/web/dist/
+
+# macOS
+.DS_Store
