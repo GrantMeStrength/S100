@@ -11,9 +11,26 @@ export interface SlotEntry {
   params: Record<string, unknown>;
 }
 
-function parseMachineSlots(json: string): { name: string; slots: SlotEntry[] } {
+export interface ToggleEntry {
+  addr: string;   // 4-digit hex, e.g. "F800"
+  bytes: string;  // even-length hex pairs, e.g. "3EAA"
+}
+
+export interface ActionEntry {
+  id: string;
+  type: 'toggle';
+  params: { entries: ToggleEntry[] };
+}
+
+export interface ParsedConfig {
+  name: string;
+  slots: SlotEntry[];
+  actions: ActionEntry[];
+}
+
+function parseMachineConfig(json: string): ParsedConfig {
   try {
-    const m = JSON.parse(json) as { name?: string; slots?: unknown[] };
+    const m = JSON.parse(json) as { name?: string; slots?: unknown[]; actions?: unknown[] };
     const slots: SlotEntry[] = (m.slots ?? []).map((s) => {
       const e = s as Record<string, unknown>;
       return {
@@ -22,15 +39,23 @@ function parseMachineSlots(json: string): { name: string; slots: SlotEntry[] } {
         params: (e.params ?? {}) as Record<string, unknown>,
       };
     });
-    return { name: m.name ?? 'S-100 System', slots };
+    const actions: ActionEntry[] = (m.actions ?? []).map((a) => {
+      const e = a as Record<string, unknown>;
+      return {
+        id: (e.id ?? crypto.randomUUID()) as string,
+        type: (e.type ?? 'toggle') as 'toggle',
+        params: (e.params ?? { entries: [] }) as ActionEntry['params'],
+      };
+    });
+    return { name: m.name ?? 'S-100 System', slots, actions };
   } catch {
-    return { name: 'S-100 System', slots: [] };
+    return { name: 'S-100 System', slots: [], actions: [] };
   }
 }
 
-/** Serialise slots back to machine JSON, stripping UI-only keys (prefixed _). */
-function slotsToJson(name: string, slots: SlotEntry[]): string {
-  return JSON.stringify({
+/** Serialise config to machine JSON, stripping UI-only keys (prefixed _). */
+function configToJson(name: string, slots: SlotEntry[], actions: ActionEntry[]): string {
+  const obj: Record<string, unknown> = {
     name,
     slots: slots
       .slice()
@@ -44,7 +69,35 @@ function slotsToJson(name: string, slots: SlotEntry[]): string {
         if (Object.keys(clean).length > 0) entry.params = clean;
         return entry;
       }),
-  });
+  };
+  if (actions.length > 0) obj.actions = actions;
+  return JSON.stringify(obj);
+}
+
+/**
+ * Validate and parse a set of toggle entries.  Returns an error string or null.
+ * On success, writes all bytes via wasm.writeMemory.
+ */
+export function applyToggleEntries(entries: ToggleEntry[]): string | null {
+  const HEX4 = /^[0-9A-Fa-f]{4}$/;
+  const HEX2P = /^(?:[0-9A-Fa-f]{2})+$/;
+  // Validate all before writing any
+  for (const e of entries) {
+    if (!HEX4.test(e.addr)) return `Bad address: "${e.addr}" — must be 4 hex digits`;
+    if (!e.bytes || !HEX2P.test(e.bytes)) return `Bad bytes for ${e.addr}: "${e.bytes}" — must be pairs of hex digits`;
+    const addr = parseInt(e.addr, 16);
+    const count = e.bytes.length / 2;
+    if (addr + count - 1 > 0xFFFF) return `Entry at ${e.addr}: ${count} bytes would overflow past 0xFFFF`;
+  }
+  // Write
+  for (const e of entries) {
+    const addr = parseInt(e.addr, 16);
+    for (let i = 0; i < e.bytes.length; i += 2) {
+      const byte = parseInt(e.bytes.slice(i, i + 2), 16);
+      wasm.writeMemory(addr + i / 2, byte);
+    }
+  }
+  return null;
 }
 
 // ── Demo machine ───────────────────────────────────────────────────────────────
@@ -175,6 +228,8 @@ export interface MachineStore {
   machineJson: string;
   slots: SlotEntry[];
   machineName: string;
+  actions: ActionEntry[];
+  actionsApplied: boolean;
 
   // Disk status (label or null for each of the 4 drives)
   diskStatus: (string | null)[];
@@ -198,9 +253,14 @@ export interface MachineStore {
   removeCard: (slotIndex: number) => void;
   moveCard: (fromSlot: number, toSlot: number) => void;
   updateCardParams: (slotIndex: number, params: Record<string, unknown>) => void;
+
+  // Action (Toggle) management
+  addAction: () => void;
+  removeAction: (id: string) => void;
+  updateAction: (id: string, params: ActionEntry['params']) => void;
 }
 
-const defaultParsed = parseMachineSlots(DEFAULT_MACHINE);
+const defaultParsed = parseMachineConfig(DEFAULT_MACHINE);
 
 export const useMachineStore = create<MachineStore>((set, get) => ({
   running: false,
@@ -214,13 +274,15 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   machineJson: DEFAULT_MACHINE,
   slots: defaultParsed.slots,
   machineName: defaultParsed.name,
+  actions: defaultParsed.actions,
+  actionsApplied: false,
   diskStatus: [null, null, null, null],
 
   initWasm: async () => {
     try {
       await wasm.initWasm();
       wasm.loadMachine(get().machineJson);
-      set({ wasmReady: true, error: null });
+      set({ wasmReady: true, error: null, actionsApplied: false });
     } catch (e) {
       set({ error: String(e) });
     }
@@ -229,8 +291,9 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   loadMachine: (json) => {
     try {
       wasm.loadMachine(json);
-      const { name, slots } = parseMachineSlots(json);
-      set({ machineJson: json, slots, machineName: name, error: null, terminalOutput: '', running: false, mode: 'demo' });
+      const { name, slots, actions } = parseMachineConfig(json);
+      set({ machineJson: json, slots, machineName: name, actions, actionsApplied: false,
+            error: null, terminalOutput: '', running: false, mode: 'demo' });
     } catch (e) {
       set({ error: String(e) });
     }
@@ -264,7 +327,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
 
       set({
         machineJson: CPM_MACHINE,
-        slots: parseMachineSlots(CPM_MACHINE).slots,
+        slots: parseMachineConfig(CPM_MACHINE).slots,
         machineName: 'CP/M 2.2 System',
         mode: 'cpm',
         terminalOutput: '',
@@ -273,6 +336,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
         diskStatus: ['CPM22.dsk', null, null, null],
         error: null,
         running: true,
+        actionsApplied: false,
       });
     } catch (e) {
       set({ error: String(e) });
@@ -285,9 +349,9 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     try {
       set({ running: false });
       wasm.loadMachine(preset.machine);
-      const { name, slots } = parseMachineSlots(preset.machine);
+      const { name, slots, actions } = parseMachineConfig(preset.machine);
       const base = {
-        machineJson: preset.machine, slots, machineName: name,
+        machineJson: preset.machine, slots, machineName: name, actions, actionsApplied: false,
         error: null, terminalOutput: '', traceEntries: [], traceCursor: 0,
         diskStatus: [null, null, null, null] as (string|null)[],
       };
@@ -309,7 +373,20 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     }
   },
 
-  start: () => set({ running: true }),
+  start: () => {
+    const state = get();
+    // Apply toggle actions before running (fail-closed)
+    if (!state.actionsApplied && state.actions.length > 0) {
+      for (const action of state.actions) {
+        if (action.type === 'toggle') {
+          const err = applyToggleEntries(action.params.entries);
+          if (err) { set({ error: `Toggle action error: ${err}` }); return; }
+        }
+      }
+      set({ actionsApplied: true });
+    }
+    set({ running: true });
+  },
   stop: () => set({ running: false }),
 
   reset: () => {
@@ -346,12 +423,24 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   },
 
   tick: (cycles = 32768) => {
+    // Apply toggle actions before first step (for Step button path)
+    const state = get();
+    if (!state.actionsApplied && state.actions.length > 0) {
+      for (const action of state.actions) {
+        if (action.type === 'toggle') {
+          const err = applyToggleEntries(action.params.entries);
+          if (err) { set({ error: `Toggle action error: ${err}` }); return; }
+        }
+      }
+      set({ actionsApplied: true });
+    }
+
     wasm.step(cycles);
 
     const out = wasm.getSerialOutput();
     if (out.length > 0) {
-      set(state => ({
-        terminalOutput: (state.terminalOutput + out).slice(-65536),
+      set(st => ({
+        terminalOutput: (st.terminalOutput + out).slice(-65536),
       }));
     }
 
@@ -361,10 +450,10 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     const newEntries = wasm.getTrace(cursor, 128);
     const newCursor = wasm.traceTotal();
 
-    set(state => ({
+    set(st => ({
       machineState,
       traceCursor: newCursor,
-      traceEntries: [...state.traceEntries, ...newEntries].slice(-2048),
+      traceEntries: [...st.traceEntries, ...newEntries].slice(-2048),
     }));
   },
 
@@ -378,18 +467,18 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       ...state.slots.filter(s => s.slot !== slotIndex),
       { slot: slotIndex, card: cardId, params },
     ].sort((a, b) => a.slot - b.slot);
-    const json = slotsToJson(state.machineName, newSlots);
+    const json = configToJson(state.machineName, newSlots, state.actions);
     try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
-    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo',
+    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo', actionsApplied: false,
           terminalOutput: '', traceEntries: [], traceCursor: 0, diskStatus: [null,null,null,null] });
   },
 
   removeCard: (slotIndex) => {
     const state = get();
     const newSlots = state.slots.filter(s => s.slot !== slotIndex);
-    const json = slotsToJson(state.machineName, newSlots);
+    const json = configToJson(state.machineName, newSlots, state.actions);
     try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
-    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo',
+    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo', actionsApplied: false,
           terminalOutput: '', traceEntries: [], traceCursor: 0, diskStatus: [null,null,null,null] });
   },
 
@@ -400,18 +489,53 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       if (s.slot === toSlot)   return { ...s, slot: fromSlot };
       return s;
     }).sort((a, b) => a.slot - b.slot);
-    const json = slotsToJson(state.machineName, newSlots);
+    const json = configToJson(state.machineName, newSlots, state.actions);
     try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
-    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo',
+    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo', actionsApplied: false,
           terminalOutput: '', traceEntries: [], traceCursor: 0, diskStatus: [null,null,null,null] });
   },
 
   updateCardParams: (slotIndex, params) => {
     const state = get();
     const newSlots = state.slots.map(s => s.slot === slotIndex ? { ...s, params } : s);
-    const json = slotsToJson(state.machineName, newSlots);
+    const json = configToJson(state.machineName, newSlots, state.actions);
     try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
-    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo',
+    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo', actionsApplied: false,
           terminalOutput: '', traceEntries: [], traceCursor: 0, diskStatus: [null,null,null,null] });
+  },
+
+  // ── Action (Toggle) management ───────────────────────────────────────────────
+
+  addAction: () => {
+    const state = get();
+    const newAction: ActionEntry = {
+      id: crypto.randomUUID(),
+      type: 'toggle',
+      params: { entries: [] },
+    };
+    const newActions = [...state.actions, newAction];
+    const json = configToJson(state.machineName, state.slots, newActions);
+    // Reload machine to clear any previously toggled bytes
+    try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
+    set({ actions: newActions, machineJson: json, actionsApplied: false, running: false,
+          terminalOutput: '', traceEntries: [], traceCursor: 0 });
+  },
+
+  removeAction: (id) => {
+    const state = get();
+    const newActions = state.actions.filter(a => a.id !== id);
+    const json = configToJson(state.machineName, state.slots, newActions);
+    try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
+    set({ actions: newActions, machineJson: json, actionsApplied: false, running: false,
+          terminalOutput: '', traceEntries: [], traceCursor: 0 });
+  },
+
+  updateAction: (id, params) => {
+    const state = get();
+    const newActions = state.actions.map(a => a.id === id ? { ...a, params } : a);
+    const json = configToJson(state.machineName, state.slots, newActions);
+    try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
+    set({ actions: newActions, machineJson: json, actionsApplied: false, running: false,
+          terminalOutput: '', traceEntries: [], traceCursor: 0 });
   },
 }));

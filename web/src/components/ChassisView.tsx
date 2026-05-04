@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useMachineStore } from '../store/machineStore';
-import type { SlotEntry } from '../store/machineStore';
+import type { SlotEntry, ActionEntry } from '../store/machineStore';
 import { getCardType, CARD_TYPES } from '../config/cardTypes';
 import { CardConfigModal } from './CardConfigModal';
+import { ToggleConfigModal } from './ToggleConfigModal';
 
 const NUM_SLOTS = 16;
 
@@ -23,9 +24,13 @@ export function ChassisView() {
   const addCard    = useMachineStore(s => s.addCard);
   const removeCard = useMachineStore(s => s.removeCard);
   const moveCard   = useMachineStore(s => s.moveCard);
+  const actions    = useMachineStore(s => s.actions);
+  const addAction  = useMachineStore(s => s.addAction);
+  const removeAction = useMachineStore(s => s.removeAction);
 
-  const [configSlot, setConfigSlot] = useState<number | null>(null);
-  const [dragOver,   setDragOver]   = useState<number | null>(null);
+  const [configSlot,   setConfigSlot]   = useState<number | null>(null);
+  const [configAction, setConfigAction] = useState<ActionEntry | null>(null);
+  const [dragOver,     setDragOver]     = useState<number | null>(null);
 
   const slotMap = new Map(slots.map(s => [s.slot, s]));
 
@@ -137,11 +142,85 @@ export function ChassisView() {
         </div>
       </div>
 
+      {/* ACTIONS section */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ color: '#8b949e', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>
+            Actions
+          </span>
+          <button
+            onClick={addAction}
+            style={{ background: 'none', border: '1px dashed #30363d', borderRadius: 3, color: '#8b949e', cursor: 'pointer', fontSize: 10, padding: '2px 8px', fontFamily: 'monospace' }}
+          >+ Toggle</button>
+        </div>
+
+        {actions.length === 0 ? (
+          <div style={{ color: '#484f58', fontSize: 10, fontStyle: 'italic', padding: '4px 0' }}>
+            No actions — add a Toggle to pre-load bytes into RAM
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {actions.map(action => (
+              <div
+                key={action.id}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '3px 6px',
+                  background: '#0d1117',
+                  border: '1px solid #2a3d2a',
+                  borderRadius: 3,
+                  minHeight: 30,
+                }}
+              >
+                <div style={{
+                  background: '#0f2d0f',
+                  border: '1px solid #2ea043',
+                  borderRadius: 2,
+                  padding: '1px 5px',
+                  fontSize: 9,
+                  color: '#2ea043',
+                  fontFamily: 'monospace',
+                  flexShrink: 0,
+                  letterSpacing: 0.5,
+                }}>
+                  TOGGLE
+                </div>
+
+                <span style={{ color: '#c9d1d9', fontSize: 11, flex: 1, fontFamily: 'monospace' }}>
+                  {action.params.entries.length === 0
+                    ? '(no entries)'
+                    : action.params.entries.map(e => `${e.addr}:${e.bytes.length/2}B`).join(', ')}
+                </span>
+
+                <button
+                  onClick={() => setConfigAction(action)}
+                  title="Configure"
+                  style={iconBtn}
+                >⚙</button>
+
+                <button
+                  onClick={() => removeAction(action.id)}
+                  title="Remove action"
+                  style={{ ...iconBtn, color: '#f85149' }}
+                >✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {configSlot !== null && configEntry && (
         <CardConfigModal
           slot={configSlot}
           entry={configEntry}
           onClose={() => setConfigSlot(null)}
+        />
+      )}
+
+      {configAction && (
+        <ToggleConfigModal
+          action={configAction}
+          onClose={() => setConfigAction(null)}
         />
       )}
     </>
