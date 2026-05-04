@@ -210,28 +210,51 @@ export function buildCcp(): Uint8Array {
   emit(0xB7);            // ORA A
   JNZ('DIR_SKIP');       // EX != 0 → higher extent, skip
 
-  // Print name (bytes 1–8 of entry; skip status byte at offset 0)
-  emit(0x23);            // INX H  (skip status byte)
+  // Skip status byte; check name[0] – blank names are empty/deleted slots
+  emit(0x23);            // INX H  (skip status → HL = name[0])
+  emit(0x7E);            // MOV A, M
+  emit(0xE6, 0x7F);      // ANI 0x7F
+  emit(0xFE, 0x20); JZ('DIR_SKIP');  // CPI ' ' → blank name, skip
+
+  // Print name bytes, stopping at first space (CP/M names have no spaces)
   emit(0x06, 8);         // MVI B, 8
   mark('DIR_NAME_LOOP');
   emit(0x7E);            // MOV A, M
-  emit(0xE6, 0x7F);      // ANI 0x7F  (strip attribute bit)
+  emit(0xE6, 0x7F);      // ANI 0x7F
+  emit(0xFE, 0x20); JZ('DIR_NAME_DONE');  // CPI ' ' → stop
   CALL('PRINT_CHAR');
   emit(0x23);            // INX H
   emit(0x05);            // DCR B
   JNZ('DIR_NAME_LOOP');
+  JMP('DIR_EXT_CHECK');  // B=0: all 8 chars printed, HL already at entry+9
+
+  // Stopped early: advance HL the remaining B steps to reach entry+9
+  mark('DIR_NAME_DONE');
+  mark('DIR_NAME_SKIP');
+  emit(0x23);            // INX H
+  emit(0x05);            // DCR B
+  JNZ('DIR_NAME_SKIP');
+
+  // HL is now at entry+9 (first ext byte); print dot+ext only if ext is non-blank
+  mark('DIR_EXT_CHECK');
+  emit(0x7E);            // MOV A, M  (ext[0])
+  emit(0xE6, 0x7F);      // ANI 0x7F
+  emit(0xFE, 0x20); JZ('DIR_NOEXT');  // CPI ' ' → no extension
 
   emit(0x3E, 0x2E); CALL('PRINT_CHAR');  // '.'
 
-  // Print extension (bytes 9–11, HL is now at entry+9)
+  // Print up to 3 ext bytes, stopping at first space
   emit(0x06, 3);         // MVI B, 3
   mark('DIR_EXT_LOOP');
   emit(0x7E);            // MOV A, M
   emit(0xE6, 0x7F);      // ANI 0x7F
+  emit(0xFE, 0x20); JZ('DIR_NOEXT');  // CPI ' ' → stop
   CALL('PRINT_CHAR');
   emit(0x23);            // INX H
   emit(0x05);            // DCR B
   JNZ('DIR_EXT_LOOP');
+
+  mark('DIR_NOEXT');
 
   emit(0x3E, 0x0D); CALL('PRINT_CHAR');  // '\r'
   emit(0x3E, 0x0A); CALL('PRINT_CHAR');  // '\n'
