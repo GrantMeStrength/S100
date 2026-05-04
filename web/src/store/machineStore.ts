@@ -133,7 +133,7 @@ export interface MachineStore {
   sendInput: (s: string) => void;
   insertDisk: (drive: number, file: File) => void;
   ejectDisk: (drive: number) => void;
-  tick: () => void;
+  tick: (cycles?: number) => void;
   clearTerminal: () => void;
 
   // Card config actions (each reloads the WASM machine)
@@ -258,8 +258,8 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     });
   },
 
-  tick: () => {
-    wasm.step(32768);
+  tick: (cycles = 32768) => {
+    wasm.step(cycles);
 
     const out = wasm.getSerialOutput();
     if (out.length > 0) {

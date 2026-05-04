@@ -96,17 +96,18 @@ export function S100CardShape({
       </div>
 
       {/* ── Edge connector ───────────────────────────────────────────── */}
-      {/* Template: 1.500" (15%) plain | 6.375" (63.75%) contacts | 2.125" (21.25%) plain */}
+      {/* PCB material is cut away on each side; only the contact strip   */}
+      {/* protrudes. Template: centred at 15% offset, 63.75% wide.        */}
       <div style={{
         height: 16,
-        display: 'flex',
-        alignItems: 'stretch',
-        overflow: 'hidden',
-        borderRadius: '0 0 2px 2px',
+        position: 'relative',
       }}>
-        <div style={{ flex: '0 0 15%',      background: info.color }} />
         <div style={{
-          flex: '0 0 63.75%',
+          position: 'absolute',
+          left: '15%',
+          width: '63.75%',
+          top: 0,
+          bottom: 0,
           background: '#140f00',
           display: 'flex',
           gap: 2,
@@ -114,6 +115,8 @@ export function S100CardShape({
           alignItems: 'stretch',
           borderLeft:  '1px solid #2a1e00',
           borderRight: '1px solid #2a1e00',
+          borderBottom: '1px solid #1a0e00',
+          borderRadius: '0 0 2px 2px',
         }}>
           {Array.from({ length: contacts }, (_, i) => (
             <div key={i} style={{
@@ -125,7 +128,6 @@ export function S100CardShape({
             }} />
           ))}
         </div>
-        <div style={{ flex: '0 0 21.25%',   background: info.color }} />
       </div>
     </div>
   );

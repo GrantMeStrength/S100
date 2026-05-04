@@ -8,7 +8,17 @@ import { BusAnalyzer } from './components/BusAnalyzer';
 import { TraceViewer } from './components/TraceViewer';
 import { DiskManager } from './components/DiskManager';
 
-const CYCLES_PER_FRAME = 33333; // ~2 MHz at 60 fps
+// Speed presets: label → cycles/second (0 = manual step)
+const SPEED_PRESETS = [
+  { label: '1 Hz',   hz: 1 },
+  { label: '10 Hz',  hz: 10 },
+  { label: '100 Hz', hz: 100 },
+  { label: '1 kHz',  hz: 1_000 },
+  { label: '10 kHz', hz: 10_000 },
+  { label: '100 kHz',hz: 100_000 },
+  { label: '1 MHz',  hz: 1_000_000 },
+  { label: '2 MHz',  hz: 2_000_000 },
+] as const;
 
 export default function App() {
   const initWasm  = useMachineStore(s => s.initWasm);
@@ -22,29 +32,41 @@ export default function App() {
   const error     = useMachineStore(s => s.error);
   const mode      = useMachineStore(s => s.mode);
 
-  const rafRef = useRef<number>(0);
-  const lastTimeRef = useRef<number>(0);
+  // Speed state: index into SPEED_PRESETS
+  const [speedIdx, setSpeedIdx] = React.useState(SPEED_PRESETS.length - 1); // default 2 MHz
+  const cyclesPerSecond = SPEED_PRESETS[speedIdx].hz;
+
+  const rafRef         = useRef<number>(0);
+  const lastTimeRef    = useRef<number>(0);
+  const accumRef       = useRef<number>(0); // fractional cycle accumulator
 
   // Initialize WASM on mount
   useEffect(() => { initWasm(); }, [initWasm]);
 
-  // Run loop using elapsed-time-based cycle budget
+  // Run loop — fractional accumulator for accurate slow speeds
   useEffect(() => {
     if (!running) return;
+    accumRef.current  = 0;
+    lastTimeRef.current = 0;
 
     const loop = (now: number) => {
       const elapsed = lastTimeRef.current ? now - lastTimeRef.current : 16.67;
       lastTimeRef.current = now;
-      // Budget: 2 MHz = 2,000,000 cycles/sec
-      const budget = Math.min(Math.round(2_000_000 * elapsed / 1000), 200_000);
-      tick();
+
+      accumRef.current += cyclesPerSecond * elapsed / 1000;
+      const toRun = Math.floor(accumRef.current);
+      accumRef.current -= toRun;
+
+      if (toRun > 0) {
+        // Cap per-frame burst so the UI stays responsive at high speeds
+        tick(Math.min(toRun, 200_000));
+      }
       rafRef.current = requestAnimationFrame(loop);
     };
 
-    lastTimeRef.current = 0;
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [running, tick]);
+  }, [running, tick, cyclesPerSecond]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
@@ -76,7 +98,30 @@ export default function App() {
           </span>
         )}
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Speed control */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ color: '#484f58', fontSize: 10, fontFamily: 'monospace' }}>CPU</span>
+            <select
+              value={speedIdx}
+              onChange={e => setSpeedIdx(Number(e.target.value))}
+              style={{
+                background: '#21262d',
+                border: '1px solid #30363d',
+                borderRadius: 4,
+                color: '#c9d1d9',
+                fontSize: 11,
+                fontFamily: 'monospace',
+                padding: '2px 4px',
+                cursor: 'pointer',
+              }}
+            >
+              {SPEED_PRESETS.map((p, i) => (
+                <option key={i} value={i}>{p.label}</option>
+              ))}
+            </select>
+          </div>
+
           {!wasmReady ? (
             <span style={{ color: '#8b949e', fontSize: 12 }}>Loading WASM…</span>
           ) : (
@@ -87,6 +132,9 @@ export default function App() {
                 disabled={!wasmReady}
               >
                 {running ? '⏹ Stop' : '▶ Run'}
+              </CtrlBtn>
+              <CtrlBtn onClick={() => { stop(); tick(1); }} disabled={!wasmReady || running} color="#8b949e">
+                ⏭ Step
               </CtrlBtn>
               <CtrlBtn onClick={reset} disabled={!wasmReady}>⟳ Reset</CtrlBtn>
               <CtrlBtn

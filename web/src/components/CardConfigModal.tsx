@@ -150,18 +150,13 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
         </div>
 
         {/* ── Edge connector ─────────────────────────────────────────── */}
-        {/* Template: 1.500" (15%) plain | 6.375" (63.75%) contacts | 2.125" (21.25%) plain */}
-        <div style={{
-          background: info.color,
-          height: 22,
-          display: 'flex',
-          alignItems: 'stretch',
-          overflow: 'hidden',
-          borderRadius: '0 0 3px 3px',
-        }}>
-          <div style={{ flex: '0 0 15%',    background: info.color }} />
+        {/* PCB cut away on each side — only the contact strip protrudes  */}
+        <div style={{ height: 22, position: 'relative' }}>
           <div style={{
-            flex: '0 0 63.75%',
+            position: 'absolute',
+            left: '15%',
+            width: '63.75%',
+            top: 0, bottom: 0,
             background: '#140f00',
             display: 'flex',
             gap: 2,
@@ -169,6 +164,8 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
             alignItems: 'stretch',
             borderLeft:  '1px solid #2a1e00',
             borderRight: '1px solid #2a1e00',
+            borderBottom: '1px solid #1a0e00',
+            borderRadius: '0 0 3px 3px',
           }}>
             {Array.from({ length: CONTACTS }, (_, i) => (
               <div key={i} style={{
@@ -180,7 +177,6 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
               }} />
             ))}
           </div>
-          <div style={{ flex: '0 0 21.25%', background: info.color }} />
         </div>
       </div>
     </div>
