@@ -214,14 +214,14 @@ export function buildCcp(): Uint8Array {
   emit(0x23);            // INX H  (skip status → HL = name[0])
   emit(0x7E);            // MOV A, M
   emit(0xE6, 0x7F);      // ANI 0x7F
-  emit(0xFE, 0x20); JZ('DIR_SKIP');  // CPI ' ' → blank name, skip
+  emit(0xFE, 0x21); JC('DIR_SKIP');  // char < '!' (null or space) → blank name, skip
 
   // Print name bytes, stopping at first space (CP/M names have no spaces)
   emit(0x06, 8);         // MVI B, 8
   mark('DIR_NAME_LOOP');
   emit(0x7E);            // MOV A, M
   emit(0xE6, 0x7F);      // ANI 0x7F
-  emit(0xFE, 0x20); JZ('DIR_NAME_DONE');  // CPI ' ' → stop
+  emit(0xFE, 0x21); JC('DIR_NAME_DONE');  // char < '!' → stop (null or space)
   CALL('PRINT_CHAR');
   emit(0x23);            // INX H
   emit(0x05);            // DCR B
@@ -239,7 +239,7 @@ export function buildCcp(): Uint8Array {
   mark('DIR_EXT_CHECK');
   emit(0x7E);            // MOV A, M  (ext[0])
   emit(0xE6, 0x7F);      // ANI 0x7F
-  emit(0xFE, 0x20); JZ('DIR_NOEXT');  // CPI ' ' → no extension
+  emit(0xFE, 0x21); JC('DIR_NOEXT');  // char < '!' → no extension (null or space)
 
   emit(0x3E, 0x2E); CALL('PRINT_CHAR');  // '.'
 
@@ -248,7 +248,7 @@ export function buildCcp(): Uint8Array {
   mark('DIR_EXT_LOOP');
   emit(0x7E);            // MOV A, M
   emit(0xE6, 0x7F);      // ANI 0x7F
-  emit(0xFE, 0x20); JZ('DIR_NOEXT');  // CPI ' ' → stop
+  emit(0xFE, 0x21); JC('DIR_NOEXT');  // char < '!' → stop (null or space)
   CALL('PRINT_CHAR');
   emit(0x23);            // INX H
   emit(0x05);            // DCR B
