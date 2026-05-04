@@ -1,0 +1,15 @@
+{
+  "name": "s100-core",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "s100_core_bg.wasm",
+    "s100_core.js",
+    "s100_core.d.ts"
+  ],
+  "main": "s100_core.js",
+  "types": "s100_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

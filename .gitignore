@@ -2,11 +2,10 @@
 /core/target/
 /core/pkg/
 
-# wasm-pack generated (web consumes from src/wasm/pkg)
-/web/src/wasm/pkg/*.wasm
-/web/src/wasm/pkg/*.js
-/web/src/wasm/pkg/*.ts
-/web/src/wasm/pkg/package.json
+# wasm-pack generated files — WASM binary and JS bindings are committed
+# so the app works without needing a local Rust/wasm-pack toolchain.
+# Run `npm run build:wasm` after any changes to core/src/
+
 
 # Node / Vite
 /web/node_modules/
