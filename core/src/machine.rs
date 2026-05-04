@@ -393,6 +393,9 @@ impl Machine {
         let param_e  = self.cpu.e;
         let param_de = (self.cpu.d as u16) << 8 | self.cpu.e as u16;
 
+        #[cfg(test)]
+        eprintln!("BDOS fn={} DE=0x{:04X} (from PC=0x{:04X})", function, param_de, self.cpu.bdos_call_pc);
+
         match function {
             // ── 0: System Reset (warm boot) ─────────────────────────────
             0 => {
@@ -616,11 +619,16 @@ impl Machine {
                 let rc  = self.bus.mem_read(param_de.wrapping_add(15)) as usize;
                 let cr  = self.bus.mem_read(param_de.wrapping_add(32)) as usize;
 
+                #[cfg(test)]
+                eprintln!("  fn20: ex={} rc={} cr={}", ex, rc, cr);
+
                 // RC=0 in a non-last extent means "full extent" (128 records).
                 // Only treat rc as a hard limit if it's >0.
                 if rc > 0 && cr >= rc {
                     // Try to load the next extent from the directory
                     if !self.advance_extent(param_de, ex) {
+                        #[cfg(test)]
+                        eprintln!("  fn20: EOF (cr={} >= rc={}, no next extent)", cr, rc);
                         self.cpu.a = 1; // EOF
                         return true;
                     }
@@ -640,6 +648,10 @@ impl Machine {
                 let block_num = self.bus.mem_read(
                     param_de.wrapping_add(16).wrapping_add(block_idx as u16)
                 ) as usize;
+
+                #[cfg(test)]
+                eprintln!("  fn20: block_idx={} rec={} block_num={} dma=0x{:04X}",
+                    block_idx, rec_in_block, block_num, self.bdos_dma_addr);
 
                 if block_num == 0 {
                     // Unallocated block — try next extent
@@ -669,6 +681,8 @@ impl Machine {
                 } else {
                     self.bus.mem_write(param_de.wrapping_add(32), new_cr as u8);
                 }
+                #[cfg(test)]
+                eprintln!("  fn20: read OK, new_cr={}, A=0", new_cr);
                 self.cpu.a = 0;
                 true
             }
@@ -705,9 +719,67 @@ impl Machine {
                 true
             }
 
+            // ── 30: Set/Get File Attributes ──────────────────────────────
+            30 => { self.cpu.a = 0; true }
+
+            // ── 31: Get Disk Parameter Block ──────────────────────────────
+            31 => { self.cpu.h = 0; self.cpu.l = 0; true }
+
             // ── 32: Get/Set User Code ─────────────────────────────────────
             32 => {
                 self.cpu.a = 0; // User 0
+                true
+            }
+
+            // ── 33: Read Random Record ────────────────────────────────────
+            33 => {
+                // FCB at DE; random record in FCB[33..35]
+                let rr_lo = self.bus.mem_read(param_de.wrapping_add(33)) as u32;
+                let rr_hi = self.bus.mem_read(param_de.wrapping_add(34)) as u32;
+                let rr = rr_lo | (rr_hi << 8);
+                let ex_val = (rr / 128) as u8;
+                let cr_val = (rr % 128) as u8;
+                self.bus.mem_write(param_de.wrapping_add(12), ex_val);
+                self.bus.mem_write(param_de.wrapping_add(32), cr_val);
+                // Re-open the extent if needed
+                let name_data: Vec<u8> = (0..11u16)
+                    .map(|i| self.bus.mem_read(param_de.wrapping_add(1 + i)) & 0x7F)
+                    .collect();
+                let drive = self.current_drive();
+                for idx in 0..CPM_DIR_ENTRIES {
+                    let entry = self.disk_read_bytes(drive, CPM_DATA_START + idx * 32, 32);
+                    if entry.len() < 32 || entry[0] == 0xE5 || entry[0] > 0x0F { continue; }
+                    if entry[12] != ex_val { continue; }
+                    let ok = (0..11usize).all(|i| {
+                        let p = name_data[i] & 0x7F;
+                        let e = entry[1 + i] & 0x7F;
+                        p == b'?' || p == e
+                    });
+                    if !ok { continue; }
+                    for i in 12..32u16 {
+                        let b = entry[i as usize];
+                        self.bus.mem_write(param_de.wrapping_add(i), b);
+                    }
+                    self.bus.mem_write(param_de.wrapping_add(32), cr_val);
+                    break;
+                }
+                // Delegate to fn 20
+                let saved_fn = self.cpu.c;
+                self.cpu.c = 20;
+                let result = self.handle_bdos();
+                self.cpu.c = saved_fn;
+                result
+            }
+
+            // ── 35: Get/Set Random Record ─────────────────────────────────
+            35 | 36 => {
+                // Compute random record from FCB EX and CR
+                let ex_val = self.bus.mem_read(param_de.wrapping_add(12)) as u32;
+                let cr_val = self.bus.mem_read(param_de.wrapping_add(32)) as u32;
+                let rr = ex_val * 128 + cr_val;
+                self.bus.mem_write(param_de.wrapping_add(33), (rr & 0xFF) as u8);
+                self.bus.mem_write(param_de.wrapping_add(34), ((rr >> 8) & 0xFF) as u8);
+                self.cpu.a = 0;
                 true
             }
 
