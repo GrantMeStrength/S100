@@ -29,11 +29,7 @@ export function CardLibrary() {
       </span>
       <span style={{ color: '#484f58', fontSize: 10 }}>Drag to slot · click to add</span>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: 6,
-      }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {CARD_TYPES.map(info => {
           const alreadyIn = info.unique && slots.some(s => {
             const ct = getCardType(s.card);
@@ -46,17 +42,18 @@ export function CardLibrary() {
               info={info}
               draggable={!alreadyIn}
               disabled={alreadyIn}
-              contacts={14}
+              contacts={20}
+              bodyAspect="2/1"
               title={alreadyIn ? 'Already installed in chassis' : info.description}
               onDragStart={e => !alreadyIn && handleDragStart(e, info.id)}
               onClick={() => !alreadyIn && handleClick(info.id)}
             >
               <div style={{
                 color: '#c9d1d9',
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 600,
                 lineHeight: 1.3,
-                marginBottom: 4,
+                marginBottom: 3,
                 marginLeft: 2,
               }}>
                 {info.label}

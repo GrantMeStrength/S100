@@ -17,6 +17,8 @@ export interface S100CardShapeProps {
   disabled?: boolean;
   /** Number of visible contact fingers on the edge connector (default 18). */
   contacts?: number;
+  /** Optional CSS aspect-ratio for the PCB body (e.g. "2/1" for 10×5 S-100 proportions). */
+  bodyAspect?: string;
   onDragStart?: (e: React.DragEvent) => void;
   onClick?: () => void;
   title?: string;
@@ -24,7 +26,7 @@ export interface S100CardShapeProps {
 
 export function S100CardShape({
   info, children, style, draggable, disabled = false,
-  contacts = 18, onDragStart, onClick, title,
+  contacts = 18, bodyAspect, onDragStart, onClick, title,
 }: S100CardShapeProps) {
   const border = `1.5px solid ${disabled ? '#21262d' : info.accent}`;
 
@@ -46,7 +48,9 @@ export function S100CardShape({
           cursor: disabled ? 'not-allowed' : (draggable || onClick ? 'grab' : 'default'),
           opacity: disabled ? 0.38 : 1,
           position: 'relative',
-          flex: 1,
+          flex: bodyAspect ? undefined : 1,
+          aspectRatio: bodyAspect,
+          overflow: bodyAspect ? 'hidden' : undefined,
         }}
       >
         {/* Mounting holes — top corners */}
