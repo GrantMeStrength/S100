@@ -69,6 +69,10 @@ impl TraceBuffer {
         &self.entries
     }
 
+    pub fn last(&self) -> Option<&TraceEntry> {
+        self.entries.back()
+    }
+
     pub fn clear(&mut self) {
         self.entries.clear();
         self.total_written = 0;

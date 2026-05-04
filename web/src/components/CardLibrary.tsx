@@ -44,6 +44,7 @@ export function CardLibrary() {
               disabled={alreadyIn}
               contacts={20}
               bodyAspect="2/1"
+              pcbColor={alreadyIn ? undefined : '#1a3d1a'}
               title={alreadyIn ? 'Already installed in chassis' : info.description}
               onDragStart={e => !alreadyIn && handleDragStart(e, info.id)}
               onClick={() => !alreadyIn && handleClick(info.id)}

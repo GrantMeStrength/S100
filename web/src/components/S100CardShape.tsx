@@ -30,6 +30,8 @@ export interface S100CardShapeProps {
   contacts?: number;
   /** Optional CSS aspect-ratio for the PCB body, e.g. "2/1". */
   bodyAspect?: string;
+  /** Override PCB body color (e.g. '#1e4a20' for library green). */
+  pcbColor?: string;
   onDragStart?: (e: React.DragEvent) => void;
   onClick?: () => void;
   title?: string;
@@ -37,9 +39,10 @@ export interface S100CardShapeProps {
 
 export function S100CardShape({
   info, children, style, draggable, disabled = false,
-  contacts = 20, bodyAspect, onDragStart, onClick, title,
+  contacts = 20, bodyAspect, pcbColor, onDragStart, onClick, title,
 }: S100CardShapeProps) {
   const accent = disabled ? '#21262d' : info.accent;
+  const bodyBg = pcbColor ?? info.color;
 
   // drop-shadow acts as a border that follows the clip-path outline
   const shadow = `drop-shadow(0 0 0.5px ${accent}) drop-shadow(0 0 0.5px ${accent})`;
@@ -59,7 +62,7 @@ export function S100CardShape({
         onClick={onClick}
         title={title}
         style={{
-          background: info.color,
+          background: bodyBg,
           clipPath: POLY,
           padding: '7px 8px 9px',
           cursor: disabled ? 'not-allowed' : (draggable || onClick ? 'grab' : 'default'),

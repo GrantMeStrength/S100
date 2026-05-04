@@ -45,6 +45,8 @@ export interface MachineState {
   cpu: CpuState;
   cards: string[];
   bus_cycles: number;
+  /** Last byte written to I/O port 0xFF — IMSAI Programmed Output latch. */
+  programmed_output: number;
 }
 
 export function getState(): MachineState {

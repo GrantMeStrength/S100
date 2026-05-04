@@ -55,6 +55,8 @@ pub struct MachineState {
     pub cpu: CpuState,
     pub cards: Vec<String>,
     pub bus_cycles: u64,
+    /// Last value written to I/O port 0xFF (IMSAI Programmed Output latch).
+    pub programmed_output: u8,
 }
 
 // ── CP/M disk geometry constants (standard 8-inch) ───────────────────────────
@@ -79,6 +81,8 @@ pub struct Machine {
     dir_scan_drive: usize,
     /// 11-byte name+ext wildcard pattern ('?' = any).
     dir_scan_pattern: [u8; 11],
+    /// IMSAI Programmed Output latch — captures the last byte written to port 0xFF.
+    pub programmed_output: u8,
 }
 
 impl Machine {
@@ -95,6 +99,7 @@ impl Machine {
             dir_scan_idx: 0,
             dir_scan_drive: 0,
             dir_scan_pattern: [b'?'; 11],
+            programmed_output: 0,
         }
     }
 
@@ -113,6 +118,7 @@ impl Machine {
         self.dir_scan_idx = 0;
         self.dir_scan_drive = 0;
         self.dir_scan_pattern = [b'?'; 11];
+        self.programmed_output = 0;
 
         // Validate: exactly one CPU card
         let cpu_count = config.slots.iter().filter(|s| s.card.starts_with("cpu_")).count();
@@ -204,6 +210,13 @@ impl Machine {
         while elapsed < cycles {
             elapsed += self.cpu.step(&mut self.bus);
 
+            // Capture IMSAI Programmed Output port (0xFF) — check the most recent trace entry
+            if let Some(entry) = self.bus.trace.last() {
+                if entry.op == crate::trace::OpKind::IoWrite && entry.address == 0xFF {
+                    self.programmed_output = entry.data;
+                }
+            }
+
             // Handle BDOS trap (CALL 0x0005 intercepted by CPU)
             if self.cpu.bdos_pending {
                 self.cpu.bdos_pending = false;
@@ -249,6 +262,7 @@ impl Machine {
             },
             cards: self.bus.cards.iter().map(|c| c.name().to_owned()).collect(),
             bus_cycles: self.bus.cycle_count,
+            programmed_output: self.programmed_output,
         }
     }
 

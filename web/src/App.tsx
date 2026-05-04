@@ -8,6 +8,7 @@ import { CardLibrary } from './components/CardLibrary';
 import { BusAnalyzer } from './components/BusAnalyzer';
 import { TraceViewer } from './components/TraceViewer';
 import { DiskManager } from './components/DiskManager';
+import { ProgrammedOutputPanel } from './components/ProgrammedOutputPanel';
 import { MemoryView } from './components/MemoryView';
 
 export default function App() {
@@ -173,6 +174,7 @@ export default function App() {
           <ChassisView />
           <Divider />
           <RegisterView />
+          <ProgrammedOutputPanel />
           <Divider />
           <BusAnalyzer />
           <Divider />

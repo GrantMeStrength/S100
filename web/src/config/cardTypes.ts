@@ -1,10 +1,54 @@
 /** Metadata catalogue for all card types the chassis understands. */
 
+// ── ROM image preset catalog ─────────────────────────────────────────────────
+
+export interface RomImagePreset {
+  id: string;
+  label: string;
+  /** Path served from /public (e.g. '/roms/memon80.bin') */
+  url: string;
+  base: number;
+  size: number;
+  /** Recommended serial port settings for info display */
+  serialDataPort?: number;
+  serialStatusPort?: number;
+  description: string;
+}
+
+export const ROM_IMAGES: RomImagePreset[] = [
+  {
+    id: 'memon80',
+    label: 'Memon/80 v3.06 (M. Eberhard / JAIR)',
+    url: '/roms/memon80.bin',
+    base: 0xF800,
+    size: 2048,
+    serialDataPort: 0x00,
+    serialStatusPort: 0x01,
+    description: 'Full-featured S-100 monitor for the JAIR board. Commands: D(ump), S(earch), F(ill), M(ove), I/O, B(oot). Serial: data 0x00, status 0x01.',
+  },
+  {
+    id: 'altmon',
+    label: 'ALTMON v1.x (Altair 8800)',
+    url: '/roms/altmon.bin',
+    base: 0xF800,
+    size: 1024,
+    serialDataPort: 0x11,
+    serialStatusPort: 0x10,
+    description: 'Classic Altair 8800 monitor. Commands: D(ump), E(nter), G(o), R(egisters), F(ind). Serial: 88-2SIO data 0x11, status 0x10.',
+  },
+];
+
+export function getRomImage(id: string): RomImagePreset | undefined {
+  return ROM_IMAGES.find(r => r.id === id);
+}
+
+// ── Card config fields ────────────────────────────────────────────────────────
+
 export interface ConfigField {
   key: string;
   label: string;
-  /** hex = numeric, shown & parsed as 0x… */
-  type: 'number' | 'hex' | 'file';
+  /** hex = numeric as 0x…  |  romimage = ROM preset dropdown */
+  type: 'number' | 'hex' | 'file' | 'romimage';
   min?: number;
   max?: number;
   step?: number;
@@ -84,12 +128,13 @@ export const CARD_TYPES: CardTypeInfo[] = [
     shortLabel: 'ROM',
     color: '#0d1e35',
     accent: '#2980b9',
-    description: 'Read-only memory with loadable image',
-    defaultParams: { base: 0xF000, size: 4096 },
+    description: 'Read-only memory — choose a ROM image to "plug in", or upload a custom binary.',
+    defaultParams: { base: 0xF800, size: 2048, rom_image: 'memon80' },
     configFields: [
-      { key: 'base', label: 'Base address', type: 'hex', min: 0, max: 0xFFFF, default: 0xF000 },
-      { key: 'size', label: 'Size (bytes)',  type: 'number', min: 256, max: 32768, step: 256, default: 4096 },
-      { key: '_file', label: 'ROM image (.bin)', type: 'file', accept: '.bin,.rom,.img,.hex', default: null },
+      { key: 'rom_image', label: 'ROM chip (jumper select)', type: 'romimage', default: 'memon80' },
+      { key: 'base', label: 'Base address', type: 'hex', min: 0, max: 0xFFFF, default: 0xF800 },
+      { key: 'size', label: 'Size (bytes)',  type: 'number', min: 256, max: 32768, step: 256, default: 2048 },
+      { key: '_file', label: 'Custom ROM image (.bin)', type: 'file', accept: '.bin,.rom,.img,.hex', default: null },
     ],
   },
   {
