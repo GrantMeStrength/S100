@@ -1,6 +1,7 @@
 import React from 'react';
 import { CARD_TYPES, getCardType } from '../config/cardTypes';
 import { useMachineStore } from '../store/machineStore';
+import { S100CardShape } from './S100CardShape';
 
 export function CardLibrary() {
   const slots    = useMachineStore(s => s.slots);
@@ -10,7 +11,6 @@ export function CardLibrary() {
     e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'library_card', cardId }));
   };
 
-  /** Click to add: places card in the first empty slot (0–15). */
   const handleClick = (cardId: string) => {
     const occupied = new Set(slots.map(s => s.slot));
     for (let i = 0; i < 16; i++) {
@@ -23,15 +23,17 @@ export function CardLibrary() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <span style={{ color: '#8b949e', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>
         Card Library
       </span>
-      <span style={{ color: '#484f58', fontSize: 10 }}>
-        Drag to slot or click to add
-      </span>
+      <span style={{ color: '#484f58', fontSize: 10 }}>Drag to slot · click to add</span>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: 6,
+      }}>
         {CARD_TYPES.map(info => {
           const alreadyIn = info.unique && slots.some(s => {
             const ct = getCardType(s.card);
@@ -39,48 +41,35 @@ export function CardLibrary() {
           });
 
           return (
-            <div
+            <S100CardShape
               key={info.id}
+              info={info}
               draggable={!alreadyIn}
+              disabled={alreadyIn}
+              contacts={14}
+              title={alreadyIn ? 'Already installed in chassis' : info.description}
               onDragStart={e => !alreadyIn && handleDragStart(e, info.id)}
               onClick={() => !alreadyIn && handleClick(info.id)}
-              title={alreadyIn ? 'Already installed' : info.description}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 7,
-                padding: '5px 7px',
-                background: info.color,
-                border: `1px solid ${alreadyIn ? '#21262d' : info.accent}`,
-                borderRadius: 4,
-                cursor: alreadyIn ? 'not-allowed' : 'grab',
-                opacity: alreadyIn ? 0.35 : 1,
-                transition: 'opacity 0.15s',
-                userSelect: 'none',
-              }}
             >
-              <span style={{
-                color: info.accent,
-                fontSize: 9,
-                fontFamily: 'monospace',
-                width: 26,
-                flexShrink: 0,
-                letterSpacing: 0.5,
+              <div style={{
+                color: '#c9d1d9',
+                fontSize: 11,
+                fontWeight: 600,
+                lineHeight: 1.3,
+                marginBottom: 4,
+                marginLeft: 2,
               }}>
-                {info.shortLabel}
-              </span>
-
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ color: '#c9d1d9', fontSize: 11 }}>{info.label}</div>
-                <div style={{ color: '#8b949e', fontSize: 9, marginTop: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                  {info.description}
-                </div>
+                {info.label}
               </div>
-
-              {info.stub && (
-                <span style={{ color: '#484f58', fontSize: 8, flexShrink: 0 }}>SOON</span>
-              )}
-            </div>
+              <div style={{
+                color: '#6e7681',
+                fontSize: 9,
+                lineHeight: 1.5,
+                marginLeft: 2,
+              }}>
+                {info.description}
+              </div>
+            </S100CardShape>
           );
         })}
       </div>

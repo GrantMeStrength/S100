@@ -118,7 +118,7 @@ export default function App() {
 
         {/* Column 1: Card library */}
         <div style={{
-          width: 190,
+          width: 220,
           borderRight: '1px solid #30363d',
           padding: 10,
           display: 'flex',

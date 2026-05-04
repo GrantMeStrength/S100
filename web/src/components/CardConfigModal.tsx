@@ -3,6 +3,7 @@ import type { SlotEntry } from '../store/machineStore';
 import { useMachineStore } from '../store/machineStore';
 import { getCardType } from '../config/cardTypes';
 import type { ConfigField } from '../config/cardTypes';
+import { S100CardShape } from './S100CardShape';
 
 interface Props {
   slot: number;
@@ -56,25 +57,25 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
         borderRadius: 8,
         padding: 20,
         minWidth: 340,
-        maxWidth: 460,
+        maxWidth: 480,
         width: '90vw',
         boxShadow: `0 0 30px ${info.accent}33`,
       }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <div style={{
-            background: info.color,
-            border: `1px solid ${info.accent}`,
-            borderRadius: 3,
-            padding: '2px 8px',
-            color: info.accent,
-            fontFamily: 'monospace',
-            fontSize: 11,
-          }}>
-            {info.shortLabel}
+        {/* Header — S-100 card shape */}
+        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', marginBottom: 18 }}>
+          <S100CardShape info={info} contacts={22} style={{ width: 110, flexShrink: 0 }}>
+            <div style={{ color: '#c9d1d9', fontSize: 12, fontWeight: 600, lineHeight: 1.3, marginLeft: 2, marginBottom: 2 }}>
+              {info.label}
+            </div>
+            <div style={{ color: '#6e7681', fontSize: 9, lineHeight: 1.4, marginLeft: 2 }}>
+              {info.description}
+            </div>
+          </S100CardShape>
+          <div>
+            <div style={{ color: '#484f58', fontSize: 10, marginBottom: 4 }}>SLOT {slot}</div>
+            <div style={{ color: '#c9d1d9', fontSize: 15, fontWeight: 600 }}>{info.label}</div>
+            <div style={{ color: '#8b949e', fontSize: 11, marginTop: 2 }}>Configuration</div>
           </div>
-          <span style={{ color: '#c9d1d9', fontSize: 14, flex: 1 }}>{info.label}</span>
-          <span style={{ color: '#484f58', fontSize: 11 }}>Slot {slot}</span>
         </div>
 
         {info.stub ? (

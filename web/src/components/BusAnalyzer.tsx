@@ -48,14 +48,6 @@ export function BusAnalyzer() {
   const entries = useMachineStore(s => s.traceEntries);
   const last = entries[entries.length - 1];
 
-  const opColor = (op: string) => {
-    if (op === 'MemRead')  return '#79c0ff';
-    if (op === 'MemWrite') return '#ffa657';
-    if (op === 'IoRead')   return '#a5f3d4';
-    if (op === 'IoWrite')  return '#f0883e';
-    return '#8b949e';
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <span style={{ color: '#8b949e', fontSize: 12 }}>BUS ANALYZER</span>
@@ -73,16 +65,28 @@ export function BusAnalyzer() {
         <AddrBus addr={last?.address ?? 0} />
         <DataBus data={last?.data ?? 0} />
 
-        <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-          {(['MemRead','MemWrite','IoRead','IoWrite'] as const).map(op => (
-            <div key={op} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Led on={last?.op === op} color={opColor(op)} />
-              <span style={{ color: '#8b949e', fontSize: 10 }}>{op}</span>
+        <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
+          {([
+            ['MemRead',  'MEMR', '#79c0ff'],
+            ['MemWrite', 'MEMW', '#ffa657'],
+            ['IoRead',   'IOR',  '#a5f3d4'],
+            ['IoWrite',  'IOW',  '#f0883e'],
+          ] as const).map(([op, label, color]) => (
+            <div key={op} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+              <Led on={last?.op === op} color={color} />
+              <span style={{
+                color: last?.op === op ? color : '#484f58',
+                fontSize: 8,
+                fontFamily: 'monospace',
+                letterSpacing: 0.5,
+              }}>{label}</span>
             </div>
           ))}
-          <span style={{ color: '#8b949e', fontSize: 10, marginLeft: 8 }}>
-            src: <span style={{ color: '#c9d1d9' }}>{last?.source ?? '—'}</span>
-          </span>
+          <div style={{ marginLeft: 8, display: 'flex', alignItems: 'center' }}>
+            <span style={{ color: '#8b949e', fontSize: 10 }}>
+              src: <span style={{ color: '#c9d1d9' }}>{last?.source ?? '—'}</span>
+            </span>
+          </div>
         </div>
       </div>
     </div>
