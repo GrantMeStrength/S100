@@ -17,7 +17,6 @@ pub struct Emulator {
 impl Emulator {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        #[cfg(feature = "console_error_panic_hook")]
         console_error_panic_hook::set_once();
         Emulator { machine: Machine::new() }
     }

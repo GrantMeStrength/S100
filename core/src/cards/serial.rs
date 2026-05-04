@@ -35,6 +35,7 @@ impl SerialCard {
             status_port,
             tx_port: data_port,
             rx_port: data_port,
+            rx_status_port: status_port,   // same port for both TX and RX status
             status_rx_bit: 0,
             status_tx_bit: 1,
             rx_buf: VecDeque::new(),
@@ -45,14 +46,16 @@ impl SerialCard {
     pub fn with_ports(
         name: impl Into<String>,
         tx_port: u8, rx_port: u8, status_port: u8,
+        rx_status_port: u8,
         status_rx_bit: u8, status_tx_bit: u8,
     ) -> Self {
         SerialCard {
             name: name.into(),
-            data_port: rx_port, // data_port kept for downcast compatibility
+            data_port: rx_port,
             status_port,
             tx_port,
             rx_port,
+            rx_status_port,
             status_rx_bit,
             status_tx_bit,
             rx_buf: VecDeque::new(),
@@ -84,10 +87,16 @@ impl S100Card for SerialCard {
     fn io_read(&mut self, port: u8) -> Option<u8> {
         if port == self.rx_port {
             Some(self.rx_buf.pop_front().unwrap_or(0))
-        } else if port == self.status_port {
+        } else if port == self.rx_status_port {
             let rx_bit = if self.rx_buf.is_empty() { 0u8 } else { 1u8 << self.status_rx_bit };
-            let tx_bit = 1u8 << self.status_tx_bit; // TX always ready
+            // If rx_status_port == status_port, also include TX ready bit
+            let tx_bit = if self.rx_status_port == self.status_port {
+                1u8 << self.status_tx_bit
+            } else { 0 };
             Some(rx_bit | tx_bit)
+        } else if port == self.status_port {
+            // TX-only status port (used when rx_status_port is different)
+            Some(1u8 << self.status_tx_bit)
         } else {
             None
         }
@@ -101,6 +110,7 @@ impl S100Card for SerialCard {
     }
 
     fn owns_io(&self, port: u8) -> bool {
-        port == self.tx_port || port == self.rx_port || port == self.status_port
+        port == self.tx_port || port == self.rx_port
+            || port == self.status_port || port == self.rx_status_port
     }
 }

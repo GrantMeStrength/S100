@@ -205,8 +205,8 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
       slots: [
         { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
         { slot: 1, card: 'ram',    params: { base: 0, size: 0xF800 } },
-        // JAIR Z80 SIO: TX on 0x20, RX on 0x28, status on 0x25 (bit0=RX, bit5=TX)
-        { slot: 2, card: 'serial', params: { tx_port: 0x20, rx_port: 0x28, status_port: 0x25, status_rx_bit: 0, status_tx_bit: 5 } },
+        // JAIR Z80 SIO: TX on 0x20, RX on 0x28, TX status 0x25 bit5, RX status 0x2D bit0
+        { slot: 2, card: 'serial', params: { tx_port: 0x20, rx_port: 0x28, status_port: 0x25, rx_status_port: 0x2D, status_rx_bit: 0, status_tx_bit: 5 } },
         { slot: 3, card: 'rom',    params: { base: 0xF800 } },
       ],
       // Toggle in JMP 0xF800 at reset vector — exactly as you would on a real front panel

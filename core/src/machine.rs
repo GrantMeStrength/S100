@@ -168,6 +168,8 @@ impl Machine {
                         .and_then(Value::as_u64).unwrap_or(data_port as u64) as u8;
                     let rx_port = slot.params.get("rx_port")
                         .and_then(Value::as_u64).unwrap_or(data_port as u64) as u8;
+                    let rx_status_port = slot.params.get("rx_status_port")
+                        .and_then(Value::as_u64).unwrap_or(status_port as u64) as u8;
                     let status_rx_bit = slot.params.get("status_rx_bit")
                         .and_then(Value::as_u64).unwrap_or(0) as u8;
                     let status_tx_bit = slot.params.get("status_tx_bit")
@@ -175,7 +177,8 @@ impl Machine {
                     let name = format!("serial@{tx_port:#04x}");
                     self.serial_idx = Some(self.bus.cards.len());
                     self.bus.add_card(Box::new(SerialCard::with_ports(
-                        name, tx_port, rx_port, status_port, status_rx_bit, status_tx_bit,
+                        name, tx_port, rx_port, status_port, rx_status_port,
+                        status_rx_bit, status_tx_bit,
                     )));
                 }
 
