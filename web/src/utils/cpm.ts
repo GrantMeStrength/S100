@@ -4,19 +4,23 @@
  * Memory map:
  *   0x0000–0x0002  JMP 0xFA00  (boot vector)
  *   0x0005         BDOS entry  (intercepted by CPU trap)
- *   0xDC00–0xDDFF  CCP code
- *   0xDE00–0xDE23  FCB  (36 bytes)
- *   0xDE40–0xDEBF  DMA buffer (128 bytes)
- *   0xDF00–0xDFFF  CMDBUF
+ *   0x0080         command tail length byte (written by CCP before transient launch)
+ *   0xDC00–0xDEFF  CCP code (~700 bytes)
+ *   0xDF00–0xDF23  FCB  (36 bytes)
+ *   0xDF24         COL_CTR  (DIR column counter)
+ *   0xDF25–0xDF26  LOAD_PTR (transient load-address scratch: lo, hi)
+ *   0xDF40–0xDFBF  DMA buffer (128 bytes, 128-byte aligned)
+ *   0xE000–0xE07F  CMDBUF
  *   0xFA00–0xFA05  Minimal BIOS
  */
 
-const BDOS   = 0x0005;
-const FCB    = 0xDE00;
-const DMA    = 0xDE40;
-const CMDBUF = 0xDF00;
+const BDOS     = 0x0005;
+const FCB      = 0xDF00;   // File Control Block (36 bytes)
+const DMA      = 0xDF40;   // 128-byte DMA / sector buffer
+const COL_CTR  = 0xDF24;   // 1-byte column counter for DIR (0–3)
+const LOAD_PTR = 0xDF25;   // 2-byte transient load address (lo at +0, hi at +1)
+const CMDBUF   = 0xE000;   // console input buffer
 const CCP_BASE = 0xDC00;
-const COL_CTR  = 0xDDFF;  // 1-byte column counter for DIR (0–3)
 
 // ── BIOS ───────────────────────────────────────────────────────────────────────
 
@@ -36,15 +40,13 @@ export function buildBootVector(): Uint8Array {
 // ── CCP ────────────────────────────────────────────────────────────────────────
 
 /**
- * Builds a full CCP that handles DIR and TYPE commands.
+ * Builds a full CCP that handles DIR, TYPE, ERA, and transient .COM loading.
  *
- * Layout inside the 512-byte region 0xDC00–0xDDFF:
+ * Layout inside 0xDC00–0xDEFF:
  *   0xDC00  JMP CCP_START          (skip over PRINT_CHAR subroutine)
  *   0xDC03  PRINT_CHAR             (A = char → BDOS fn 2, preserves HL/BC)
  *   0xDC0E  CCP_START              (set DMA, fall into PROMPT_LOOP)
- *   …       PROMPT_LOOP / dispatch
- *   …       DO_DIR / DO_TYPE
- *   …       String data
+ *   …       PROMPT_LOOP / dispatch / DO_DIR / DO_TYPE / DO_ERA / TRAN_LOAD
  */
 export function buildCcp(): Uint8Array {
   const code: number[] = [];
@@ -141,19 +143,135 @@ export function buildCcp(): Uint8Array {
   // ── Command dispatch: "TYPE " ─────────────────────────────────────────────
   mark('CHK_TYPE');
   emit(0x3A, (CMDBUF + 2) & 0xFF, (CMDBUF + 2) >> 8); // LDA CMDBUF+2
-  emit(0xFE, 0x54); JNZ('UNKNOWN_CMD');                 // CPI 'T'
+  emit(0xFE, 0x54); JNZ('CHK_ERA');                    // CPI 'T'
   emit(0x3A, (CMDBUF + 3) & 0xFF, (CMDBUF + 3) >> 8); // LDA CMDBUF+3
-  emit(0xFE, 0x59); JNZ('UNKNOWN_CMD');                 // CPI 'Y'
+  emit(0xFE, 0x59); JNZ('CHK_ERA');                    // CPI 'Y'
   emit(0x3A, (CMDBUF + 4) & 0xFF, (CMDBUF + 4) >> 8); // LDA CMDBUF+4
-  emit(0xFE, 0x50); JNZ('UNKNOWN_CMD');                 // CPI 'P'
+  emit(0xFE, 0x50); JNZ('CHK_ERA');                    // CPI 'P'
   emit(0x3A, (CMDBUF + 5) & 0xFF, (CMDBUF + 5) >> 8); // LDA CMDBUF+5
-  emit(0xFE, 0x45); JNZ('UNKNOWN_CMD');                 // CPI 'E'
+  emit(0xFE, 0x45); JNZ('CHK_ERA');                    // CPI 'E'
   emit(0x3A, (CMDBUF + 6) & 0xFF, (CMDBUF + 6) >> 8); // LDA CMDBUF+6
-  emit(0xFE, 0x20); JZ('DO_TYPE');                      // CPI ' '
-  JMP('UNKNOWN_CMD');
+  emit(0xFE, 0x20); JZ('DO_TYPE');                     // CPI ' '
+  JMP('CHK_ERA');
 
-  mark('UNKNOWN_CMD');
-  emit(0x3E, 0x3F); CALL('PRINT_CHAR');  // MVI A, '?'
+  // ── Command dispatch: "ERA " (erase files) ───────────────────────────────
+  mark('CHK_ERA');
+  emit(0x3A, (CMDBUF + 2) & 0xFF, (CMDBUF + 2) >> 8); // LDA CMDBUF+2
+  emit(0xFE, 0x45); JNZ('TRAN_LOAD');                  // CPI 'E'
+  emit(0x3A, (CMDBUF + 3) & 0xFF, (CMDBUF + 3) >> 8); // LDA CMDBUF+3
+  emit(0xFE, 0x52); JNZ('TRAN_LOAD');                  // CPI 'R'
+  emit(0x3A, (CMDBUF + 4) & 0xFF, (CMDBUF + 4) >> 8); // LDA CMDBUF+4
+  emit(0xFE, 0x41); JNZ('TRAN_LOAD');                  // CPI 'A'
+  emit(0x3A, (CMDBUF + 5) & 0xFF, (CMDBUF + 5) >> 8); // LDA CMDBUF+5
+  emit(0xFE, 0x20); JNZ('TRAN_LOAD');                  // CPI ' '
+  emit(0x3A, (CMDBUF + 6) & 0xFF, (CMDBUF + 6) >> 8); // LDA CMDBUF+6
+  emit(0xB7); JZ('TRAN_LOAD');                          // ORA A → no filename
+
+  mark('DO_ERA');
+  // Zero FCB
+  emit(0x21, FCB & 0xFF, FCB >> 8);                     // LXI H, FCB
+  emit(0x06, 36);                                         // MVI B, 36
+  mark('ERA_FCB_CLR');
+  emit(0x36, 0x00); emit(0x23); emit(0x05); JNZ('ERA_FCB_CLR');
+  // Space-pad FCB[1..11]
+  emit(0x21, (FCB + 1) & 0xFF, (FCB + 1) >> 8);        // LXI H, FCB+1
+  emit(0x06, 11);                                         // MVI B, 11
+  mark('ERA_FCB_SP');
+  emit(0x36, 0x20); emit(0x23); emit(0x05); JNZ('ERA_FCB_SP');
+  // Parse name from CMDBUF+6 into FCB[1..8]
+  emit(0x21, (CMDBUF + 6) & 0xFF, (CMDBUF + 6) >> 8);  // LXI H, CMDBUF+6
+  emit(0x11, (FCB + 1) & 0xFF, (FCB + 1) >> 8);         // LXI D, FCB+1
+  emit(0x06, 8);                                          // MVI B, 8
+  mark('ERA_NAME');
+  emit(0x7E);                               // MOV A, M
+  emit(0xB7); JZ('ERA_OPEN');              // ORA A → null
+  emit(0xFE, 0x2E); JZ('ERA_EXT_START');  // CPI '.'
+  emit(0xFE, 0x20); JZ('ERA_OPEN');       // CPI ' '
+  emit(0x12); emit(0x23); emit(0x13); emit(0x05); JNZ('ERA_NAME');
+  mark('ERA_SKIP_DOT');
+  emit(0x7E); emit(0xB7); JZ('ERA_OPEN');        // null
+  emit(0xFE, 0x2E); JZ('ERA_EXT_START');          // '.'
+  emit(0x23); JMP('ERA_SKIP_DOT');                 // INX H; loop
+  mark('ERA_EXT_START');
+  emit(0x23);                                       // INX H (skip '.')
+  emit(0x11, (FCB + 9) & 0xFF, (FCB + 9) >> 8);  // LXI D, FCB+9
+  emit(0x06, 3);                                    // MVI B, 3
+  mark('ERA_EXT');
+  emit(0x7E); emit(0xB7); JZ('ERA_OPEN');
+  emit(0xFE, 0x20); JZ('ERA_OPEN');
+  emit(0x12); emit(0x23); emit(0x13); emit(0x05); JNZ('ERA_EXT');
+  mark('ERA_OPEN');
+  emit(0x0E, 19);                                // MVI C, 19 (ERASE)
+  emit(0x11, FCB & 0xFF, FCB >> 8);             // LXI D, FCB
+  emit(0xCD, BDOS & 0xFF, BDOS >> 8);           // CALL BDOS
+  JMP('PROMPT_LOOP');
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // TRAN_LOAD — parse command as NAME.COM, load into TPA, jump to 0x0100
+  // ════════════════════════════════════════════════════════════════════════════
+  mark('TRAN_LOAD');
+  // Zero FCB
+  emit(0x21, FCB & 0xFF, FCB >> 8);                     // LXI H, FCB
+  emit(0x06, 36);                                         // MVI B, 36
+  mark('TRAN_FCB_CLR');
+  emit(0x36, 0x00); emit(0x23); emit(0x05); JNZ('TRAN_FCB_CLR');
+  // Space-pad FCB[1..11]
+  emit(0x21, (FCB + 1) & 0xFF, (FCB + 1) >> 8);        // LXI H, FCB+1
+  emit(0x06, 11);                                         // MVI B, 11
+  mark('TRAN_FCB_SP');
+  emit(0x36, 0x20); emit(0x23); emit(0x05); JNZ('TRAN_FCB_SP');
+  // Copy command name from CMDBUF+2 into FCB[1..8] (stop at space/null)
+  emit(0x21, (CMDBUF + 2) & 0xFF, (CMDBUF + 2) >> 8);  // LXI H, CMDBUF+2
+  emit(0x11, (FCB + 1) & 0xFF, (FCB + 1) >> 8);         // LXI D, FCB+1
+  emit(0x06, 8);                                          // MVI B, 8
+  mark('TRAN_NAME');
+  emit(0x7E);                               // MOV A, M
+  emit(0xB7); JZ('TRAN_EXT');             // ORA A → null
+  emit(0xFE, 0x20); JZ('TRAN_EXT');      // CPI ' '
+  emit(0x12); emit(0x23); emit(0x13); emit(0x05); JNZ('TRAN_NAME');
+  mark('TRAN_EXT');
+  // FCB[9..11] = "COM"
+  emit(0x21, (FCB + 9) & 0xFF, (FCB + 9) >> 8);        // LXI H, FCB+9
+  emit(0x36, 0x43); emit(0x23);                          // MVI M,'C'; INX H
+  emit(0x36, 0x4F); emit(0x23);                          // MVI M,'O'; INX H
+  emit(0x36, 0x4D);                                      // MVI M,'M'
+  // Open file (BDOS fn 15)
+  emit(0x0E, 15);                                        // MVI C, 15
+  emit(0x11, FCB & 0xFF, FCB >> 8);                     // LXI D, FCB
+  emit(0xCD, BDOS & 0xFF, BDOS >> 8);                   // CALL BDOS
+  emit(0xFE, 0xFF); JZ('TRAN_NOT_FOUND');                // CPI 0xFF; JZ → not found
+  // Init load pointer: lo=0x00, hi=0x01 → starts at 0x0100
+  emit(0x3E, 0x00); emit(0x32, LOAD_PTR & 0xFF, LOAD_PTR >> 8);
+  emit(0x3E, 0x01); emit(0x32, (LOAD_PTR + 1) & 0xFF, (LOAD_PTR + 1) >> 8);
+  mark('TRAN_LOOP');
+  // Set DMA = load pointer (DE = hi:lo)
+  emit(0x0E, 26);                                                          // MVI C, 26
+  emit(0x3A, LOAD_PTR & 0xFF, LOAD_PTR >> 8); emit(0x5F);                // LDA lo; MOV E, A
+  emit(0x3A, (LOAD_PTR + 1) & 0xFF, (LOAD_PTR + 1) >> 8); emit(0x57);  // LDA hi; MOV D, A
+  emit(0xCD, BDOS & 0xFF, BDOS >> 8);                                     // CALL BDOS
+  // Read sequential
+  emit(0x0E, 20);                                // MVI C, 20
+  emit(0x11, FCB & 0xFF, FCB >> 8);             // LXI D, FCB
+  emit(0xCD, BDOS & 0xFF, BDOS >> 8);           // CALL BDOS
+  emit(0xB7); JNZ('TRAN_RUN');                   // ORA A; JNZ → EOF
+  // Advance load pointer by 0x80
+  emit(0x3A, LOAD_PTR & 0xFF, LOAD_PTR >> 8);            // LDA lo
+  emit(0xC6, 0x80);                                        // ADI 0x80
+  emit(0x32, LOAD_PTR & 0xFF, LOAD_PTR >> 8);             // STA lo
+  JNC('TRAN_LOOP');                                         // no carry → loop
+  emit(0x3A, (LOAD_PTR + 1) & 0xFF, (LOAD_PTR + 1) >> 8); // LDA hi
+  emit(0x3C);                                               // INR A
+  emit(0x32, (LOAD_PTR + 1) & 0xFF, (LOAD_PTR + 1) >> 8); // STA hi
+  JMP('TRAN_LOOP');
+  mark('TRAN_RUN');
+  // Reset DMA to standard buffer; zero command tail; jump to TPA
+  emit(0x0E, 26);                                // MVI C, 26
+  emit(0x11, DMA & 0xFF, DMA >> 8);             // LXI D, DMA
+  emit(0xCD, BDOS & 0xFF, BDOS >> 8);           // CALL BDOS
+  emit(0x3E, 0x00); emit(0x32, 0x80, 0x00);    // MVI A,0; STA 0x0080 (empty tail)
+  emit(0xC3, 0x00, 0x01);                        // JMP 0x0100
+  mark('TRAN_NOT_FOUND');
+  emit(0x3E, 0x3F); CALL('PRINT_CHAR');          // '?'
   emit(0x3E, 0x0D); CALL('PRINT_CHAR');
   emit(0x3E, 0x0A); CALL('PRINT_CHAR');
   JMP('PROMPT_LOOP');

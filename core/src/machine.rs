@@ -585,7 +585,30 @@ impl Machine {
             }
 
             // ── 19: Delete File ───────────────────────────────────────────
-            19 => { self.cpu.a = 0xFF; true }
+            19 => {
+                let mut name = [0u8; 11];
+                for i in 0..11u16 {
+                    name[i as usize] = self.bus.mem_read(param_de.wrapping_add(1 + i)) & 0x7F;
+                }
+                let drive = self.current_drive();
+                let mut deleted = false;
+                for idx in 0..CPM_DIR_ENTRIES {
+                    let offset = CPM_DATA_START + idx * 32;
+                    let entry = self.disk_read_bytes(drive, offset, 32);
+                    if entry.len() < 32 { continue; }
+                    if entry[0] == 0xE5 || entry[0] > 0x0F { continue; }
+                    let ok = (0..11usize).all(|i| {
+                        let p = name[i] & 0x7F;
+                        let e = entry[1 + i] & 0x7F;
+                        p == b'?' || p == e
+                    });
+                    if !ok { continue; }
+                    self.disk_write_byte(drive, offset, 0xE5);
+                    deleted = true;
+                }
+                self.cpu.a = if deleted { 0 } else { 0xFF };
+                true
+            }
 
             // ── 20: Read Sequential ───────────────────────────────────────
             20 => {
@@ -727,6 +750,20 @@ impl Machine {
             out[..end - offset].copy_from_slice(&disk[offset..end]);
         }
         out
+    }
+
+    /// Write a single byte to the disk image at the given drive and byte offset.
+    fn disk_write_byte(&mut self, drive: usize, offset: usize, value: u8) {
+        let fdc_idx = match self.fdc_idx { Some(i) => i, None => return };
+        if let Some(fdc) = self.bus.cards.get_mut(fdc_idx)
+            .and_then(|c| c.as_any_mut().downcast_mut::<FloppyController>())
+        {
+            if let Some(disk) = fdc.drives[drive.min(3)].as_mut() {
+                if offset < disk.len() {
+                    disk[offset] = value;
+                }
+            }
+        }
     }
 
     /// Write `data` into bus memory starting at the current BDOS DMA address.
