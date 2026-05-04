@@ -16,6 +16,7 @@ const FCB    = 0xDE00;
 const DMA    = 0xDE40;
 const CMDBUF = 0xDF00;
 const CCP_BASE = 0xDC00;
+const COL_CTR  = 0xDDFF;  // 1-byte column counter for DIR (0–3)
 
 // ── BIOS ───────────────────────────────────────────────────────────────────────
 
@@ -162,9 +163,10 @@ export function buildCcp(): Uint8Array {
   // ════════════════════════════════════════════════════════════════════════════
   mark('DO_DIR');
 
-  // FCB[0] = 0 (current drive)
+  // FCB[0] = 0 (current drive); also zero the column counter
   emit(0x3E, 0x00);
-  emit(0x32, FCB & 0xFF, FCB >> 8);              // STA FCB
+  emit(0x32, FCB & 0xFF, FCB >> 8);                    // STA FCB
+  emit(0x32, COL_CTR & 0xFF, COL_CTR >> 8);            // STA COL_CTR
 
   // FCB[1..11] = '?' (wildcard)
   emit(0x21, (FCB + 1) & 0xFF, (FCB + 1) >> 8); // LXI H, FCB+1
@@ -256,8 +258,21 @@ export function buildCcp(): Uint8Array {
 
   mark('DIR_NOEXT');
 
-  emit(0x3E, 0x0D); CALL('PRINT_CHAR');  // '\r'
-  emit(0x3E, 0x0A); CALL('PRINT_CHAR');  // '\n'
+  // Column counter: increment; CR/LF every 4 files, else print "  " separator
+  emit(0x3A, COL_CTR & 0xFF, COL_CTR >> 8);  // LDA COL_CTR
+  emit(0x3C);                                  // INR A
+  emit(0xFE, 4);                               // CPI 4
+  JZ('DIR_NEWLINE');
+  emit(0x32, COL_CTR & 0xFF, COL_CTR >> 8);  // STA COL_CTR (1, 2, or 3)
+  emit(0x3E, 0x20); CALL('PRINT_CHAR');       // print ' '
+  emit(0x3E, 0x20); CALL('PRINT_CHAR');       // print ' '
+  JMP('DIR_SKIP');
+
+  mark('DIR_NEWLINE');
+  emit(0x3E, 0x00);
+  emit(0x32, COL_CTR & 0xFF, COL_CTR >> 8);  // STA COL_CTR (reset to 0)
+  emit(0x3E, 0x0D); CALL('PRINT_CHAR');       // '\r'
+  emit(0x3E, 0x0A); CALL('PRINT_CHAR');       // '\n'
 
   mark('DIR_SKIP');
   // BDOS fn 18 (Search Next)
@@ -268,6 +283,11 @@ export function buildCcp(): Uint8Array {
   JMP('DIR_ENTRY_LOOP');
 
   mark('DIR_DONE');
+  // Trailing newline if last line was partial (counter > 0)
+  emit(0x3A, COL_CTR & 0xFF, COL_CTR >> 8);  // LDA COL_CTR
+  emit(0xB7); JZ('PROMPT_LOOP');               // ORA A; JZ (already on new line)
+  emit(0x3E, 0x0D); CALL('PRINT_CHAR');
+  emit(0x3E, 0x0A); CALL('PRINT_CHAR');
   JMP('PROMPT_LOOP');
 
   // ════════════════════════════════════════════════════════════════════════════
