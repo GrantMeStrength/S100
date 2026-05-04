@@ -9,9 +9,6 @@ export interface RomImagePreset {
   url: string;
   base: number;
   size: number;
-  /** Recommended serial port settings for info display */
-  serialDataPort?: number;
-  serialStatusPort?: number;
   description: string;
 }
 
@@ -22,9 +19,7 @@ export const ROM_IMAGES: RomImagePreset[] = [
     url: '/roms/memon80.bin',
     base: 0xF800,
     size: 2048,
-    serialDataPort: 0x00,
-    serialStatusPort: 0x01,
-    description: 'Full-featured S-100 monitor for the JAIR board. Commands: D(ump), S(earch), F(ill), M(ove), I/O, B(oot). Serial: data 0x00, status 0x01.',
+    description: 'Full-featured S-100 monitor for the JAIR board. Commands: D(ump), S(earch), F(ill), M(ove), I/O, B(oot). Serial: TX 0x20, RX 0x28, status 0x25.',
   },
   {
     id: 'altmon',
@@ -32,8 +27,6 @@ export const ROM_IMAGES: RomImagePreset[] = [
     url: '/roms/altmon.bin',
     base: 0xF800,
     size: 1024,
-    serialDataPort: 0x11,
-    serialStatusPort: 0x10,
     description: 'Classic Altair 8800 monitor. Commands: D(ump), E(nter), G(o), R(egisters), F(ind). Serial: 88-2SIO data 0x11, status 0x10.',
   },
 ];

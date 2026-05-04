@@ -211,7 +211,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
       ],
       // Toggle in JMP 0xF800 at reset vector — exactly as you would on a real front panel
       actions: [
-        { type: 'toggle', entries: [{ addr: '0000', bytes: 'C3 00 F8' }] },
+        { type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 F8' }] } },
       ],
     }),
   },
@@ -229,7 +229,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
       ],
       // Toggle in JMP 0xF800 at reset vector — exactly as you would on a real front panel
       actions: [
-        { type: 'toggle', entries: [{ addr: '0000', bytes: 'C3 00 F8' }] },
+        { type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 F8' }] } },
       ],
     }),
   },

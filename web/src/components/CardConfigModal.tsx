@@ -1,7 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { SlotEntry } from '../store/machineStore';
 import { useMachineStore } from '../store/machineStore';
-import { getCardType } from '../config/cardTypes';
+import { getCardType, ROM_IMAGES, getRomImage } from '../config/cardTypes';
 import type { ConfigField } from '../config/cardTypes';
 
 interface Props {
@@ -15,6 +15,31 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
   const info = getCardType(entry.card);
 
   const [params, setParams] = useState<Record<string, unknown>>({ ...entry.params });
+
+  // When the user picks a ROM image from the dropdown, fetch the binary and
+  // inject data_base64 / base / size so wasm.loadMachine gets real ROM data.
+  useEffect(() => {
+    const romId = params.rom_image as string | undefined;
+    if (!romId) return;
+    const preset = getRomImage(romId);
+    if (!preset) return;
+    fetch(preset.url)
+      .then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
+      .then(buf => {
+        const bytes = new Uint8Array(buf);
+        let binary = '';
+        bytes.forEach(b => (binary += String.fromCharCode(b)));
+        setParams(prev => ({
+          ...prev,
+          data_base64: btoa(binary),
+          base: preset.base,
+          size: preset.size,
+          _fileName: undefined,
+        }));
+      })
+      .catch(err => console.error('ROM fetch failed:', err));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.rom_image]);
 
   if (!info) return null;
 
@@ -265,6 +290,31 @@ function FieldRow({
       {field.label}
     </label>
   );
+
+  if (field.type === 'romimage') {
+    const currentId = typeof value === 'string' ? value : (field.default as string ?? '');
+    const selectedPreset = getRomImage(currentId);
+    return (
+      <div>
+        {label}
+        <select
+          value={currentId}
+          onChange={e => onChange(e.target.value)}
+          style={{ ...inputStyle, cursor: 'pointer' }}
+        >
+          <option value="">— select ROM chip —</option>
+          {ROM_IMAGES.map(r => (
+            <option key={r.id} value={r.id}>{r.label}</option>
+          ))}
+        </select>
+        {selectedPreset && (
+          <div style={{ color: '#8b949e', fontSize: 10, marginTop: 4, lineHeight: 1.4 }}>
+            {selectedPreset.description}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (field.type === 'file') {
     const loaded = fileName ?? (hasBase64 ? 'ROM loaded' : undefined);
