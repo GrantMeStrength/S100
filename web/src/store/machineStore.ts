@@ -209,6 +209,10 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
         { slot: 2, card: 'serial', params: { tx_port: 0x20, rx_port: 0x28, status_port: 0x25, status_rx_bit: 0, status_tx_bit: 5 } },
         { slot: 3, card: 'rom',    params: { base: 0xF800 } },
       ],
+      // Toggle in JMP 0xF800 at reset vector — exactly as you would on a real front panel
+      actions: [
+        { type: 'toggle', entries: [{ addr: '0000', bytes: 'C3 00 F8' }] },
+      ],
     }),
   },
   {
@@ -222,6 +226,10 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
         { slot: 1, card: 'ram',    params: { base: 0, size: 0xF800 } },
         { slot: 2, card: 'serial', params: { data_port: 0x11, status_port: 0x10 } },
         { slot: 3, card: 'rom',    params: { base: 0xF800 } },
+      ],
+      // Toggle in JMP 0xF800 at reset vector — exactly as you would on a real front panel
+      actions: [
+        { type: 'toggle', entries: [{ addr: '0000', bytes: 'C3 00 F8' }] },
       ],
     }),
   },
@@ -417,12 +425,6 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       }
 
       wasm.loadMachine(machineJson);
-
-      // For ROM monitor presets: plant JMP 0xF800 at reset vector 0x0000
-      // (8080 always resets to 0x0000; monitors live at 0xF800)
-      if (preset.romUrl) {
-        wasm.loadBinary(0x0000, new Uint8Array([0xC3, 0x00, 0xF8]));
-      }
 
       if (preset.cpm) {
         wasm.loadBinary(0x0000, buildBootVector());

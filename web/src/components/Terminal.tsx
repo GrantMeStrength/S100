@@ -36,21 +36,26 @@ export function Terminal() {
     ctx.font = FONT;
     ctx.textBaseline = 'top';
 
-    // Process raw output: handle BS (0x08), DEL (0x7F), CR (\r)
+    // Process raw output: handle BS, DEL, CR, LF.
+    // \r sets a "carriage return pending" flag — the line is overwritten only when
+    // the next printable character arrives (teletype CR behaviour).
+    // \r\n commits the current line unchanged (standard CRLF).
     const lines: string[] = [];
     let cur = '';
+    let crPending = false;
     for (let i = 0; i < output.length; i++) {
       const ch = output[i];
       if (ch === '\r') {
-        // CR: move to start of current line (next \n will commit)
-        cur = '';
+        crPending = true;
       } else if (ch === '\n') {
         lines.push(cur);
         cur = '';
+        crPending = false;
       } else if (ch === '\x08' || ch === '\x7f') {
-        // Backspace / rubout
+        crPending = false;
         if (cur.length > 0) cur = cur.slice(0, -1);
       } else if (ch >= ' ' || ch === '\t') {
+        if (crPending) { cur = ''; crPending = false; }
         cur += ch;
       }
     }
