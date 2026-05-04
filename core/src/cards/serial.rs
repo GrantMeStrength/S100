@@ -4,18 +4,23 @@ use crate::card::S100Card;
 
 /// Polled serial UART card (no interrupts in MVP).
 ///
-/// Supports asymmetric TX/RX ports (e.g. Z80 SIO / Memon/80 JAIR):
-///   tx_port      — OUT to this port sends a character (default = data_port)
-///   rx_port      — IN from this port receives a character (default = data_port)
-///   status_port  — IN returns status byte
-///   status_rx_bit — which bit of status indicates "RX data available" (default 0)
-///   status_tx_bit — which bit of status indicates "TX buffer empty"   (default 1)
+/// Supports asymmetric TX/RX ports and separate TX/RX status ports
+/// (e.g. Z80 SIO / Memon/80 JAIR where TX status is on 0x25 and
+/// RX status is on 0x2D):
+///   tx_port         — OUT to this port sends a character (default = data_port)
+///   rx_port         — IN from this port receives a character (default = data_port)
+///   status_port     — IN returns TX status (bit status_tx_bit always 1)
+///   rx_status_port  — IN returns RX status (bit status_rx_bit set when data available)
+///                     defaults to status_port (combined status register)
+///   status_rx_bit   — which bit of rx_status_port indicates "RX data available" (default 0)
+///   status_tx_bit   — which bit of status_port indicates "TX buffer empty"   (default 1)
 pub struct SerialCard {
     name: String,
     pub data_port: u8,
     pub status_port: u8,
     pub tx_port: u8,
     pub rx_port: u8,
+    pub rx_status_port: u8,
     pub status_rx_bit: u8,
     pub status_tx_bit: u8,
     pub rx_buf: VecDeque<u8>,

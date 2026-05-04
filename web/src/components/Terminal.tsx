@@ -1,9 +1,9 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useMachineStore } from '../store/machineStore';
 
-const FONT = '13px "Courier New", monospace';
-const CHAR_W = 8;
-const CHAR_H = 16;
+const FONT = '11px "Courier New", monospace';
+const CHAR_W = 7;
+const CHAR_H = 13;
 const COLS = 80;
 const ROWS = 24;
 
@@ -23,6 +23,13 @@ export function Terminal() {
   const terminalOutput = useMachineStore(s => s.terminalOutput);
   const sendInput = useMachineStore(s => s.sendInput);
   const clearTerminal = useMachineStore(s => s.clearTerminal);
+  const running = useMachineStore(s => s.running);
+  const [focused, setFocused] = useState(false);
+
+  // Auto-focus when the machine starts running
+  useEffect(() => {
+    if (running) canvasRef.current?.focus();
+  }, [running]);
 
   // Simple line-buffer rendering (no full VT100 state machine for MVP)
   const render = useCallback((output: string) => {
@@ -105,26 +112,47 @@ export function Terminal() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ color: '#8b949e', fontSize: 12 }}>TERMINAL (VT100)</span>
-        <button
-          onClick={clearTerminal}
-          style={btnStyle}
-        >
-          Clear
-        </button>
+        <button onClick={clearTerminal} style={btnStyle}>Clear</button>
       </div>
-      <canvas
-        ref={canvasRef}
-        width={COLS * CHAR_W + 8}
-        height={ROWS * CHAR_H + 4}
-        tabIndex={0}
-        onKeyDown={handleKeyDown}
-        style={{
-          outline: '1px solid #30363d',
-          cursor: 'text',
-          background: '#0d1117',
-          display: 'block',
-        }}
-      />
+      {/* Wrapper positions the "click to focus" overlay */}
+      <div
+        style={{ position: 'relative', display: 'inline-block', cursor: 'text' }}
+        onClick={() => canvasRef.current?.focus()}
+      >
+        <canvas
+          ref={canvasRef}
+          width={COLS * CHAR_W + 8}
+          height={ROWS * CHAR_H + 4}
+          tabIndex={0}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={{
+            outline: focused ? '1px solid #388bfd' : '1px solid #30363d',
+            cursor: 'text',
+            background: '#0d1117',
+            display: 'block',
+            opacity: focused ? 1 : 0.55,
+            transition: 'opacity 0.15s, outline-color 0.15s',
+          }}
+        />
+        {!focused && (
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            pointerEvents: 'none',
+          }}>
+            <span style={{
+              color: '#8b949e', fontSize: 11,
+              background: 'rgba(13,17,23,0.75)',
+              padding: '2px 8px', borderRadius: 3,
+              border: '1px solid #30363d',
+            }}>
+              click to type
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
