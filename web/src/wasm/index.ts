@@ -12,10 +12,26 @@ export function getEmulator(): Emulator {
   return emulator;
 }
 
+/** Recreate the Emulator after a WASM RuntimeError (corrupted allocator). */
+function recreateEmulator(): void {
+  try { emulator?.free(); } catch { /* ignore */ }
+  emulator = new Emulator();
+}
+
 // ── Typed wrappers ─────────────────────────────────────────────────────────────
 
 export function loadMachine(json: string): void {
-  getEmulator().loadMachine(json);
+  try {
+    getEmulator().loadMachine(json);
+  } catch (e) {
+    // After a WASM panic the linear-memory allocator is corrupted; recreate.
+    if (e && typeof e === 'object' && 'name' in e && (e as Error).name === 'RuntimeError') {
+      recreateEmulator();
+      getEmulator().loadMachine(json); // retry once
+    } else {
+      throw e;
+    }
+  }
 }
 
 export function step(cycles: number): number {

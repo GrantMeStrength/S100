@@ -4,16 +4,15 @@ use crate::card::S100Card;
 
 /// Polled serial UART card (no interrupts in MVP).
 ///
-/// Supports asymmetric TX/RX ports and separate TX/RX status ports
-/// (e.g. Z80 SIO / Memon/80 JAIR where TX status is on 0x25 and
-/// RX status is on 0x2D):
-///   tx_port         — OUT to this port sends a character (default = data_port)
-///   rx_port         — IN from this port receives a character (default = data_port)
-///   status_port     — IN returns TX status (bit status_tx_bit always 1)
-///   rx_status_port  — IN returns RX status (bit status_rx_bit set when data available)
-///                     defaults to status_port (combined status register)
-///   status_rx_bit   — which bit of rx_status_port indicates "RX data available" (default 0)
-///   status_tx_bit   — which bit of status_port indicates "TX buffer empty"   (default 1)
+/// Supports asymmetric TX/RX ports and separate TX/RX status ports:
+///   tx_port           — OUT to this port sends a character (default = data_port)
+///   rx_port           — IN from this port receives a character (default = data_port)
+///   status_port       — IN returns TX status (bit status_tx_bit set/cleared per polarity)
+///   rx_status_port    — IN returns RX status (defaults to status_port = combined register)
+///   status_rx_bit     — which bit indicates "RX data available" (default 0)
+///   status_tx_bit     — which bit indicates "TX buffer empty" (default 1)
+///   status_rx_invert  — if true, bit is CLEARED when data ready (active-low, e.g. SSM AIO)
+///   status_tx_invert  — if true, bit is SET when TX busy instead of when TX ready
 pub struct SerialCard {
     name: String,
     pub data_port: u8,
@@ -23,6 +22,8 @@ pub struct SerialCard {
     pub rx_status_port: u8,
     pub status_rx_bit: u8,
     pub status_tx_bit: u8,
+    pub status_rx_invert: bool,
+    pub status_tx_invert: bool,
     pub rx_buf: VecDeque<u8>,
     pub tx_buf: VecDeque<u8>,
 }
@@ -38,6 +39,8 @@ impl SerialCard {
             rx_status_port: status_port,   // same port for both TX and RX status
             status_rx_bit: 0,
             status_tx_bit: 1,
+            status_rx_invert: false,
+            status_tx_invert: false,
             rx_buf: VecDeque::new(),
             tx_buf: VecDeque::new(),
         }
@@ -48,6 +51,7 @@ impl SerialCard {
         tx_port: u8, rx_port: u8, status_port: u8,
         rx_status_port: u8,
         status_rx_bit: u8, status_tx_bit: u8,
+        status_rx_invert: bool, status_tx_invert: bool,
     ) -> Self {
         SerialCard {
             name: name.into(),
@@ -58,6 +62,8 @@ impl SerialCard {
             rx_status_port,
             status_rx_bit,
             status_tx_bit,
+            status_rx_invert,
+            status_tx_invert,
             rx_buf: VecDeque::new(),
             tx_buf: VecDeque::new(),
         }
@@ -69,6 +75,14 @@ impl SerialCard {
 
     pub fn drain_tx(&mut self) -> Vec<u8> {
         self.tx_buf.drain(..).collect()
+    }
+
+    /// Returns the TX status bit value: SET when TX ready (normal) or SET when TX busy (inverted).
+    fn tx_status_bit(&self) -> u8 {
+        // TX is always ready in our emulator (no outgoing buffer backpressure).
+        // Normal (invert=false): bit SET when ready.
+        // Inverted (invert=true): bit SET when BUSY (i.e., cleared when ready).
+        if !self.status_tx_invert { 1u8 << self.status_tx_bit } else { 0 }
     }
 }
 
@@ -88,15 +102,19 @@ impl S100Card for SerialCard {
         if port == self.rx_port {
             Some(self.rx_buf.pop_front().unwrap_or(0))
         } else if port == self.rx_status_port {
-            let rx_bit = if self.rx_buf.is_empty() { 0u8 } else { 1u8 << self.status_rx_bit };
-            // If rx_status_port == status_port, also include TX ready bit
+            // RX status: bit SET when ready (normal) or CLEARED when ready (inverted)
+            let rx_ready = !self.rx_buf.is_empty();
+            let rx_bit = if rx_ready ^ self.status_rx_invert {
+                1u8 << self.status_rx_bit
+            } else { 0 };
+            // If rx_status_port == status_port, also include TX status
             let tx_bit = if self.rx_status_port == self.status_port {
-                1u8 << self.status_tx_bit
+                self.tx_status_bit()
             } else { 0 };
             Some(rx_bit | tx_bit)
         } else if port == self.status_port {
             // TX-only status port (used when rx_status_port is different)
-            Some(1u8 << self.status_tx_bit)
+            Some(self.tx_status_bit())
         } else {
             None
         }

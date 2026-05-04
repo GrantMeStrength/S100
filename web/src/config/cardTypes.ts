@@ -29,6 +29,14 @@ export const ROM_IMAGES: RomImagePreset[] = [
     size: 1024,
     description: 'Classic Altair 8800 monitor. Commands: D(ump), E(nter), G(o), R(egisters), F(ind). Serial: 88-2SIO data 0x11, status 0x10.',
   },
+  {
+    id: 'ssm_mon',
+    label: 'SSM 8080 Monitor v1.0 (C.E. Ohme / SSM AIO)',
+    url: '/roms/ssm_mon.bin',
+    base: 0xF000,
+    size: 2048,
+    description: 'SSM 8080 Monitor for the SSM AIO serial board. Commands: D(ump), E(nter), G(o), B(reakpoints), C(onsole). Serial: status port 0, data port 1 (inverted logic).',
+  },
 ];
 
 export function getRomImage(id: string): RomImagePreset | undefined {

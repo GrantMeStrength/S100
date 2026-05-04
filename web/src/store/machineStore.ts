@@ -234,6 +234,28 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     }),
   },
   {
+    id: 'ssm_mon',
+    label: 'SSM 8080 Monitor v1.0 (SSM AIO)',
+    romUrl: '/roms/ssm_mon.bin',
+    machine: JSON.stringify({
+      name: 'SSM 8080 Monitor',
+      slots: [
+        { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
+        { slot: 1, card: 'ram',    params: { base: 0, size: 0xF000 } },
+        // SSM AIO serial board: combined status on port 0, data on port 1.
+        // Inverted logic: bit0=0 means RX ready, bit7=1 means TX busy (always 0 in emulation).
+        { slot: 2, card: 'serial', params: { data_port: 0x01, status_port: 0x00,
+            status_rx_bit: 0, status_tx_bit: 7,
+            status_rx_invert: true, status_tx_invert: true } },
+        { slot: 3, card: 'rom',    params: { base: 0xF000 } },
+      ],
+      // Toggle in JMP 0xF000 at reset vector
+      actions: [
+        { type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 F0' }] } },
+      ],
+    }),
+  },
+  {
     id: 'bare',
     label: 'Bare S-100 Bus',
     machine: JSON.stringify({
