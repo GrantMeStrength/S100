@@ -37,6 +37,14 @@ export const ROM_IMAGES: RomImagePreset[] = [
     size: 2048,
     description: 'SSM 8080 Monitor for the SSM AIO serial board. Commands: D(ump), E(nter), G(o), B(reakpoints), C(onsole). Serial: status port 0, data port 1 (inverted logic).',
   },
+  {
+    id: 'amon31',
+    label: 'AMON v3.1 (T. Morrow / Altair 8800)',
+    url: '/roms/amon31.bin',
+    base: 0xF000,
+    size: 4096,
+    description: 'Full-featured Altair Monitor. Commands: D(ump), E(nter), G(o), B(reakpoint), M(ove), F(ill), S(ubstitute), T(race). Serial: 88-2SIO status 0x10, data 0x11.',
+  },
 ];
 
 export function getRomImage(id: string): RomImagePreset | undefined {

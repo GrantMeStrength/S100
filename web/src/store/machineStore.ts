@@ -256,6 +256,26 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     }),
   },
   {
+    id: 'amon31',
+    label: 'AMON v3.1 Monitor (Altair 8800)',
+    romUrl: '/roms/amon31.bin',
+    machine: JSON.stringify({
+      name: 'AMON v3.1 Monitor',
+      slots: [
+        { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
+        { slot: 1, card: 'ram',    params: { base: 0, size: 0xF000 } },
+        // Same 88-2SIO ports as ALTMON: status 0x10 (bit0=RX, bit1=TX), data 0x11
+        { slot: 2, card: 'serial', params: { data_port: 0x11, status_port: 0x10 } },
+        // ROM spans 0xF000–0xFFFF (4096 bytes); cold-start entry at 0xF800
+        { slot: 3, card: 'rom',    params: { base: 0xF000 } },
+      ],
+      // Toggle in JMP 0xF800 at reset vector (AMON cold-start entry)
+      actions: [
+        { type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 F8' }] } },
+      ],
+    }),
+  },
+  {
     id: 'bare',
     label: 'Bare S-100 Bus',
     machine: JSON.stringify({
