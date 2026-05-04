@@ -1,13 +1,24 @@
 /**
- * S100CardShape — a React component that renders a visual representation
- * of a physical S-100 peripheral card: PCB body + gold edge connector.
+ * S100CardShape — visual representation of a physical S-100 peripheral card.
  *
- * Real S-100 cards have a 100-pin dual-row edge connector at the bottom.
- * We simulate the alternating gold contact fingers with a CSS repeating
- * gradient, and add small mounting-hole circles in the PCB corners.
+ * Based on the IEEE-696 / S-100 PCB template (avitech.com.au):
+ *   • 10" wide × 5" tall overall
+ *   • Chamfered (45°) cuts at the top-left and top-right corners
+ *   • Mounting holes H1/H2 inset from the chamfered corners
+ *   • Edge connector centred-ish at bottom:
+ *       left plain PCB  1.500" (15.0%)
+ *       contacts        6.375" (63.75%)
+ *       right plain PCB 2.125" (21.25%)
+ *
+ * The chamfered shape is achieved with CSS clip-path polygon.  Because
+ * clip-path also clips any CSS border, the visible "border" is rendered
+ * as a drop-shadow filter on the outer wrapper instead.
  */
 import React from 'react';
 import type { CardTypeInfo } from '../config/cardTypes';
+
+// Chamfer is ~4% of width / ~8% of height → gives a true 45° cut on a 2:1 card.
+const POLY = 'polygon(4% 0%, 96% 0%, 100% 8%, 100% 100%, 0% 100%, 0% 8%)';
 
 export interface S100CardShapeProps {
   info: CardTypeInfo;
@@ -15,9 +26,9 @@ export interface S100CardShapeProps {
   style?: React.CSSProperties;
   draggable?: boolean;
   disabled?: boolean;
-  /** Number of visible contact fingers on the edge connector (default 18). */
+  /** Number of visible gold contact fingers (default 20). */
   contacts?: number;
-  /** Optional CSS aspect-ratio for the PCB body (e.g. "2/1" for 10×5 S-100 proportions). */
+  /** Optional CSS aspect-ratio for the PCB body, e.g. "2/1". */
   bodyAspect?: string;
   onDragStart?: (e: React.DragEvent) => void;
   onClick?: () => void;
@@ -26,12 +37,20 @@ export interface S100CardShapeProps {
 
 export function S100CardShape({
   info, children, style, draggable, disabled = false,
-  contacts = 18, bodyAspect, onDragStart, onClick, title,
+  contacts = 20, bodyAspect, onDragStart, onClick, title,
 }: S100CardShapeProps) {
-  const border = `1.5px solid ${disabled ? '#21262d' : info.accent}`;
+  const accent = disabled ? '#21262d' : info.accent;
+
+  // drop-shadow acts as a border that follows the clip-path outline
+  const shadow = `drop-shadow(0 0 0.5px ${accent}) drop-shadow(0 0 0.5px ${accent})`;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', userSelect: 'none', ...style }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column', userSelect: 'none',
+      filter: shadow,
+      opacity: disabled ? 0.40 : 1,
+      ...style,
+    }}>
 
       {/* ── PCB body ─────────────────────────────────────────────────── */}
       <div
@@ -41,25 +60,22 @@ export function S100CardShape({
         title={title}
         style={{
           background: info.color,
-          border,
-          borderBottom: 'none',
-          borderRadius: '4px 4px 0 0',
+          clipPath: POLY,
           padding: '7px 8px 9px',
           cursor: disabled ? 'not-allowed' : (draggable || onClick ? 'grab' : 'default'),
-          opacity: disabled ? 0.38 : 1,
           position: 'relative',
           flex: bodyAspect ? undefined : 1,
           aspectRatio: bodyAspect,
           overflow: bodyAspect ? 'hidden' : undefined,
         }}
       >
-        {/* Mounting holes — top corners */}
-        <MountingHole style={{ position: 'absolute', top: 5, left: 5 }} />
-        <MountingHole style={{ position: 'absolute', top: 5, right: 5 }} />
+        {/* Mounting holes H1 / H2 — near chamfered top corners */}
+        <MountingHole style={{ position: 'absolute', top: '12%', left: '5%' }} />
+        <MountingHole style={{ position: 'absolute', top: '12%', right: '5%' }} />
 
         {/* Short label / designator */}
         <div style={{
-          color: info.accent,
+          color: accent,
           fontSize: 9,
           fontFamily: 'monospace',
           letterSpacing: 1,
@@ -80,31 +96,24 @@ export function S100CardShape({
       </div>
 
       {/* ── Edge connector ───────────────────────────────────────────── */}
-      {/* Real S-100: 10" card, ~6" connector centred, ~2" plain PCB each side */}
+      {/* Template: 1.500" (15%) plain | 6.375" (63.75%) contacts | 2.125" (21.25%) plain */}
       <div style={{
-        background: info.color,
-        border,
-        borderTop: `1px solid ${disabled ? '#21262d' : info.accent}44`,
-        borderRadius: '0 0 3px 3px',
         height: 16,
         display: 'flex',
         alignItems: 'stretch',
-        opacity: disabled ? 0.38 : 1,
         overflow: 'hidden',
+        borderRadius: '0 0 2px 2px',
       }}>
-        {/* Left PCB wing (~20%) */}
-        <div style={{ flex: '0 0 20%', background: info.color }} />
-
-        {/* Gold contacts (~60%) */}
+        <div style={{ flex: '0 0 15%',      background: info.color }} />
         <div style={{
-          flex: '0 0 60%',
+          flex: '0 0 63.75%',
           background: '#140f00',
           display: 'flex',
           gap: 2,
           padding: '2px 2px',
           alignItems: 'stretch',
-          borderLeft:  `1px solid #2a1e00`,
-          borderRight: `1px solid #2a1e00`,
+          borderLeft:  '1px solid #2a1e00',
+          borderRight: '1px solid #2a1e00',
         }}>
           {Array.from({ length: contacts }, (_, i) => (
             <div key={i} style={{
@@ -116,9 +125,7 @@ export function S100CardShape({
             }} />
           ))}
         </div>
-
-        {/* Right PCB wing (~20%) */}
-        <div style={{ flex: '0 0 20%', background: info.color }} />
+        <div style={{ flex: '0 0 21.25%',   background: info.color }} />
       </div>
     </div>
   );
@@ -127,11 +134,10 @@ export function S100CardShape({
 function MountingHole({ style }: { style: React.CSSProperties }) {
   return (
     <div style={{
-      width: 5,
-      height: 5,
+      width: 6, height: 6,
       borderRadius: '50%',
-      border: '1px solid rgba(255,255,255,0.08)',
-      background: 'rgba(0,0,0,0.5)',
+      border: '1px solid rgba(255,255,255,0.12)',
+      background: 'rgba(0,0,0,0.55)',
       ...style,
     }} />
   );

@@ -53,19 +53,19 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* ── The card itself ─────────────────────────────────────────── */}
+      {/* drop-shadow acts as border following the chamfered clip-path  */}
       <div style={{
         display: 'flex', flexDirection: 'column',
         width: 'min(640px, 92vw)',
-        boxShadow: `0 0 48px ${info.accent}44`,
+        filter: `drop-shadow(0 0 1px ${info.accent}) drop-shadow(0 0 1px ${info.accent}) drop-shadow(0 0 24px ${info.accent}66)`,
         userSelect: 'none',
       }}>
 
-        {/* ── PCB body (2:1 aspect) ──────────────────────────────────── */}
+        {/* ── PCB body (2:1 aspect, chamfered top corners) ───────────── */}
+        {/* Template: 10"×5", 45° chamfer ~4% of width / ~8% of height   */}
         <div style={{
           background: info.color,
-          border: `2px solid ${info.accent}`,
-          borderBottom: 'none',
-          borderRadius: '6px 6px 0 0',
+          clipPath: 'polygon(4% 0%, 96% 0%, 100% 8%, 100% 100%, 0% 100%, 0% 8%)',
           aspectRatio: '2/1',
           position: 'relative',
           padding: '14px 16px 12px',
@@ -73,11 +73,9 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
           flexDirection: 'column',
           overflow: 'hidden',
         }}>
-          {/* Mounting holes */}
-          <Hole style={{ position: 'absolute', top: 8, left: 8 }} />
-          <Hole style={{ position: 'absolute', top: 8, right: 8 }} />
-          <Hole style={{ position: 'absolute', bottom: 8, left: 8 }} />
-          <Hole style={{ position: 'absolute', bottom: 8, right: 8 }} />
+          {/* Mounting holes H1/H2 — near chamfered top corners */}
+          <Hole style={{ position: 'absolute', top: '12%', left: '5%' }} />
+          <Hole style={{ position: 'absolute', top: '12%', right: '5%' }} />
 
           {/* Card header */}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
@@ -152,20 +150,18 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
         </div>
 
         {/* ── Edge connector ─────────────────────────────────────────── */}
-        {/* Real S-100: 10" card, ~6" connector centred, ~2" plain PCB each side */}
+        {/* Template: 1.500" (15%) plain | 6.375" (63.75%) contacts | 2.125" (21.25%) plain */}
         <div style={{
           background: info.color,
-          border: `2px solid ${info.accent}`,
-          borderTop: `1px solid ${info.accent}44`,
-          borderRadius: '0 0 4px 4px',
           height: 22,
           display: 'flex',
           alignItems: 'stretch',
           overflow: 'hidden',
+          borderRadius: '0 0 3px 3px',
         }}>
-          <div style={{ flex: '0 0 20%', background: info.color }} />
+          <div style={{ flex: '0 0 15%',    background: info.color }} />
           <div style={{
-            flex: '0 0 60%',
+            flex: '0 0 63.75%',
             background: '#140f00',
             display: 'flex',
             gap: 2,
@@ -184,7 +180,7 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
               }} />
             ))}
           </div>
-          <div style={{ flex: '0 0 20%', background: info.color }} />
+          <div style={{ flex: '0 0 21.25%', background: info.color }} />
         </div>
       </div>
     </div>
