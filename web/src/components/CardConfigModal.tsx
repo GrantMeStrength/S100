@@ -185,6 +185,69 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
 
 // ── Field renderers ────────────────────────────────────────────────────────────
 
+function HexInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const fmt = (n: number) => '0x' + n.toString(16).toUpperCase().padStart(2, '0');
+  const [local, setLocal] = React.useState(fmt(value));
+
+  // Keep local in sync if the parent value changes externally
+  React.useEffect(() => { setLocal(fmt(value)); }, [value]);
+
+  const commit = () => {
+    const cleaned = local.replace(/^0[xX]/, '').replace(/[^0-9a-fA-F]/g, '');
+    const parsed  = parseInt(cleaned || '0', 16);
+    if (!isNaN(parsed)) {
+      onChange(parsed);
+      setLocal(fmt(parsed));
+    } else {
+      setLocal(fmt(value));
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      value={local}
+      onChange={e => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') commit(); }}
+      style={inputStyle}
+      spellCheck={false}
+      placeholder="0x00"
+    />
+  );
+}
+
+function NumberInput({ field, value, onChange }: {
+  field: ConfigField; value: number; onChange: (v: number) => void;
+}) {
+  const [local, setLocal] = React.useState(String(value));
+  React.useEffect(() => { setLocal(String(value)); }, [value]);
+
+  const commit = () => {
+    const parsed = parseFloat(local);
+    if (!isNaN(parsed)) {
+      const clamped = Math.max(field.min ?? -Infinity, Math.min(field.max ?? Infinity, parsed));
+      onChange(clamped);
+      setLocal(String(clamped));
+    } else {
+      setLocal(String(value));
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={local}
+      onChange={e => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') commit(); }}
+      style={inputStyle}
+      placeholder={String(field.default ?? '')}
+    />
+  );
+}
+
 function FieldRow({
   field, value, fileName, hasBase64, onChange, onFile,
 }: {
@@ -233,17 +296,7 @@ function FieldRow({
     return (
       <div>
         {label}
-        <input
-          type="text"
-          value={'0x' + num.toString(16).toUpperCase().padStart(4, '0')}
-          onChange={e => {
-            const parsed = parseInt(e.target.value.replace(/^0[xX]/, ''), 16);
-            if (!isNaN(parsed)) onChange(parsed);
-          }}
-          style={inputStyle}
-          placeholder="0x0000"
-          spellCheck={false}
-        />
+        <HexInput value={num} onChange={v => onChange(v)} />
       </div>
     );
   }
@@ -251,15 +304,7 @@ function FieldRow({
   return (
     <div>
       {label}
-      <input
-        type="number"
-        value={num}
-        min={field.min}
-        max={field.max}
-        step={field.step ?? 1}
-        onChange={e => onChange(Number(e.target.value))}
-        style={inputStyle}
-      />
+      <NumberInput field={field} value={num} onChange={v => onChange(v)} />
     </div>
   );
 }

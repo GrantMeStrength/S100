@@ -73,14 +73,16 @@ export function S100CardShape({
         <MountingHole style={{ position: 'absolute', top: '12%', left: '5%' }} />
         <MountingHole style={{ position: 'absolute', top: '12%', right: '5%' }} />
 
-        {/* Short label / designator */}
+        {/* Short label / designator — offset right to clear the H1 mounting hole */}
         <div style={{
           color: accent,
           fontSize: 9,
           fontFamily: 'monospace',
           letterSpacing: 1,
           marginBottom: 5,
-          marginLeft: 2,
+          marginLeft: 0,
+          paddingLeft: '12%',
+          paddingTop: '6%',
           textTransform: 'uppercase',
           display: 'flex',
           alignItems: 'center',

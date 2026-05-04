@@ -83,18 +83,74 @@ export const DEFAULT_MACHINE = JSON.stringify({
   ],
 });
 
-// ── CP/M machine (64K RAM + serial + FDC) ─────────────────────────────────────
-
 export const CPM_MACHINE = JSON.stringify({
   name: 'CP/M 2.2 System',
   slots: [
-    { slot: 0, card: 'cpu_8080' },
-    { slot: 1, card: 'boot_rom', params: { phantom_port: 0x71 } },
+    { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
+    { slot: 1, card: 'boot_rom', params: { phantom_port: 0xFF } },
     { slot: 2, card: 'ram',      params: { base: 0, size: 65536 } },
     { slot: 3, card: 'serial',   params: { data_port: 0, status_port: 1 } },
     { slot: 4, card: 'fdc' },
   ],
 });
+
+// ── System presets ─────────────────────────────────────────────────────────────
+
+export interface SystemPreset {
+  id: string;
+  label: string;
+  machine: string;   // JSON
+  /** If set, boots CP/M after loading (fetches disk image). */
+  cpm?: boolean;
+}
+
+export const SYSTEM_PRESETS: SystemPreset[] = [
+  {
+    id: 'altair_8k',
+    label: 'Altair 8800 — 8K Demo',
+    machine: JSON.stringify({
+      name: 'Altair 8800 (8K)',
+      slots: [
+        { slot: 0, card: 'cpu_8080', params: { speed_hz: 500_000 } },
+        { slot: 1, card: 'rom',  params: { base: 0x0000, data_hex: buildDemoRom() } },
+        { slot: 2, card: 'ram',  params: { base: 0x0000, size: 8192 } },
+        { slot: 3, card: 'serial', params: { data_port: 0, status_port: 1 } },
+      ],
+    }),
+  },
+  {
+    id: 'altair_cpm',
+    label: 'Altair 8800 — 64K CP/M 2.2',
+    machine: CPM_MACHINE,
+    cpm: true,
+  },
+  {
+    id: 'imsai_cpm',
+    label: 'IMSAI 8080 — 64K CP/M 2.2',
+    machine: JSON.stringify({
+      name: 'IMSAI 8080 CP/M',
+      slots: [
+        { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
+        { slot: 1, card: 'boot_rom', params: { phantom_port: 0x71 } },
+        { slot: 2, card: 'ram',      params: { base: 0, size: 65536 } },
+        { slot: 3, card: 'serial',   params: { data_port: 0x10, status_port: 0x11 } },
+        { slot: 4, card: 'fdc' },
+      ],
+    }),
+    cpm: true,
+  },
+  {
+    id: 'bare',
+    label: 'Bare S-100 Bus',
+    machine: JSON.stringify({
+      name: 'Bare S-100 System',
+      slots: [
+        { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
+        { slot: 1, card: 'ram', params: { base: 0, size: 65536 } },
+      ],
+    }),
+  },
+];
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
@@ -127,6 +183,7 @@ export interface MachineStore {
   initWasm: () => Promise<void>;
   loadMachine: (json: string) => void;
   bootCpm: () => Promise<void>;
+  loadPreset: (presetId: string) => Promise<void>;
   start: () => void;
   stop: () => void;
   reset: () => void;
@@ -217,6 +274,36 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
         error: null,
         running: true,
       });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  loadPreset: async (presetId) => {
+    const preset = SYSTEM_PRESETS.find(p => p.id === presetId);
+    if (!preset) return;
+    try {
+      set({ running: false });
+      wasm.loadMachine(preset.machine);
+      const { name, slots } = parseMachineSlots(preset.machine);
+      const base = {
+        machineJson: preset.machine, slots, machineName: name,
+        error: null, terminalOutput: '', traceEntries: [], traceCursor: 0,
+        diskStatus: [null, null, null, null] as (string|null)[],
+      };
+      if (preset.cpm) {
+        // Wire up CP/M binaries and disk image
+        wasm.loadBinary(0x0000, buildBootVector());
+        wasm.loadBinary(0xFA00, buildBios());
+        wasm.loadBinary(0xDC00, buildCcp());
+        const resp = await fetch('/CPM22.dsk');
+        if (!resp.ok) throw new Error(`Failed to fetch CPM22.dsk: ${resp.status}`);
+        const buf = await resp.arrayBuffer();
+        wasm.insertDisk(0, new Uint8Array(buf));
+        set({ ...base, mode: 'cpm', diskStatus: ['CPM22.dsk', null, null, null] });
+      } else {
+        set({ ...base, mode: 'demo' });
+      }
     } catch (e) {
       set({ error: String(e) });
     }

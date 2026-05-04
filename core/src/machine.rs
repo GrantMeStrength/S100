@@ -561,17 +561,24 @@ impl Machine {
                 let rc  = self.bus.mem_read(param_de.wrapping_add(15)) as usize;
                 let cr  = self.bus.mem_read(param_de.wrapping_add(32)) as usize;
 
-                let logical_rec = ex * 128 + cr;
-                let block_idx   = logical_rec / 8;
-
-                if block_idx >= 16 {
-                    self.cpu.a = 1; // past extent
-                    return true;
+                // RC=0 in a non-last extent means "full extent" (128 records).
+                // Only treat rc as a hard limit if it's >0.
+                if rc > 0 && cr >= rc {
+                    // Try to load the next extent from the directory
+                    if !self.advance_extent(param_de, ex) {
+                        self.cpu.a = 1; // EOF
+                        return true;
+                    }
+                    // Retry read with updated FCB
+                    return self.handle_bdos();
                 }
 
-                // Check if we've read all records in this extent
-                if rc > 0 && cr >= rc {
-                    self.cpu.a = 1; // EOF for this extent
+                // block_idx is relative to the CURRENT extent's AL table (0-15)
+                let block_idx   = cr / 8;
+                let rec_in_block = cr % 8;
+
+                if block_idx >= 16 {
+                    self.cpu.a = 1;
                     return true;
                 }
 
@@ -580,11 +587,14 @@ impl Machine {
                 ) as usize;
 
                 if block_num == 0 {
-                    self.cpu.a = 1; // unallocated = EOF
-                    return true;
+                    // Unallocated block — try next extent
+                    if !self.advance_extent(param_de, ex) {
+                        self.cpu.a = 1;
+                        return true;
+                    }
+                    return self.handle_bdos();
                 }
 
-                let rec_in_block = logical_rec % 8;
                 let byte_off = CPM_DATA_START + block_num * CPM_BLOCK_SIZE
                     + rec_in_block * 128;
 
@@ -595,13 +605,15 @@ impl Machine {
                 sector[..len].copy_from_slice(&data[..len]);
                 self.write_dma_bytes(&sector);
 
-                // Advance CR / EX
+                // Advance CR; when it reaches 128, roll into the next extent
                 let new_cr = cr + 1;
-                let (new_ex, final_cr) =
-                    if new_cr >= 128 { (ex + 1, 0) } else { (ex, new_cr) };
-
-                self.bus.mem_write(param_de.wrapping_add(32), final_cr as u8);
-                self.bus.mem_write(param_de.wrapping_add(12), new_ex as u8);
+                if new_cr >= 128 {
+                    if !self.advance_extent(param_de, ex) {
+                        // No more extents — that was the last record
+                    }
+                } else {
+                    self.bus.mem_write(param_de.wrapping_add(32), new_cr as u8);
+                }
                 self.cpu.a = 0;
                 true
             }
@@ -691,6 +703,42 @@ impl Machine {
         for (i, &byte) in data.iter().enumerate() {
             self.bus.mem_write(addr.wrapping_add(i as u16), byte);
         }
+    }
+
+    /// Load the next extent (ex+1) for the file whose FCB is at `fcb_addr`.
+    /// Scans the directory for a matching entry with EX == ex+1 and the same name.
+    /// If found, copies AL[]/RC/EX into the FCB and resets CR to 0.
+    /// Returns true if the next extent was found and loaded.
+    fn advance_extent(&mut self, fcb_addr: u16, current_ex: usize) -> bool {
+        let next_ex = (current_ex + 1) as u8;
+        // Read filename from FCB bytes 1-11
+        let mut name = [0u8; 11];
+        for i in 0..11u16 {
+            name[i as usize] = self.bus.mem_read(fcb_addr.wrapping_add(1 + i)) & 0x7F;
+        }
+        let drive = self.current_drive();
+        for idx in 0..CPM_DIR_ENTRIES {
+            let entry = self.disk_read_bytes(drive, CPM_DATA_START + idx * 32, 32);
+            if entry.len() < 32 { continue; }
+            if entry[0] == 0xE5 || entry[0] > 0x0F { continue; }
+            if (entry[12] & 0x1F) != (next_ex & 0x1F) { continue; }
+            // Name match
+            let ok = (0..11).all(|i| {
+                let p = name[i] & 0x7F;
+                let e = entry[1 + i] & 0x7F;
+                p == b'?' || p == e
+            });
+            if !ok { continue; }
+            // Copy EX, S1, S2, RC, AL[] into FCB
+            for i in 12..32u16 {
+                let b = entry[i as usize];
+                self.bus.mem_write(fcb_addr.wrapping_add(i), b);
+            }
+            // Reset CR
+            self.bus.mem_write(fcb_addr.wrapping_add(32), 0);
+            return true;
+        }
+        false
     }
 
     /// Core Search First/Next logic — scans from `dir_scan_idx` and returns

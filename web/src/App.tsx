@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useMachineStore } from './store/machineStore';
+import { SYSTEM_PRESETS } from './store/machineStore';
 import { Terminal } from './components/Terminal';
 import { RegisterView } from './components/RegisterView';
 import { ChassisView } from './components/ChassisView';
@@ -7,60 +8,47 @@ import { CardLibrary } from './components/CardLibrary';
 import { BusAnalyzer } from './components/BusAnalyzer';
 import { TraceViewer } from './components/TraceViewer';
 import { DiskManager } from './components/DiskManager';
-
-// Speed presets: label → cycles/second (0 = manual step)
-const SPEED_PRESETS = [
-  { label: '1 Hz',   hz: 1 },
-  { label: '10 Hz',  hz: 10 },
-  { label: '100 Hz', hz: 100 },
-  { label: '1 kHz',  hz: 1_000 },
-  { label: '10 kHz', hz: 10_000 },
-  { label: '100 kHz',hz: 100_000 },
-  { label: '1 MHz',  hz: 1_000_000 },
-  { label: '2 MHz',  hz: 2_000_000 },
-] as const;
+import { MemoryView } from './components/MemoryView';
 
 export default function App() {
-  const initWasm  = useMachineStore(s => s.initWasm);
-  const start     = useMachineStore(s => s.start);
-  const stop      = useMachineStore(s => s.stop);
-  const reset     = useMachineStore(s => s.reset);
-  const bootCpm   = useMachineStore(s => s.bootCpm);
-  const tick      = useMachineStore(s => s.tick);
-  const running   = useMachineStore(s => s.running);
-  const wasmReady = useMachineStore(s => s.wasmReady);
-  const error     = useMachineStore(s => s.error);
-  const mode      = useMachineStore(s => s.mode);
+  const initWasm    = useMachineStore(s => s.initWasm);
+  const start       = useMachineStore(s => s.start);
+  const stop        = useMachineStore(s => s.stop);
+  const reset       = useMachineStore(s => s.reset);
+  const loadPreset  = useMachineStore(s => s.loadPreset);
+  const tick        = useMachineStore(s => s.tick);
+  const running     = useMachineStore(s => s.running);
+  const wasmReady   = useMachineStore(s => s.wasmReady);
+  const error       = useMachineStore(s => s.error);
+  const mode        = useMachineStore(s => s.mode);
+  const slots       = useMachineStore(s => s.slots);
 
-  // Speed state: index into SPEED_PRESETS
-  const [speedIdx, setSpeedIdx] = React.useState(SPEED_PRESETS.length - 1); // default 2 MHz
-  const cyclesPerSecond = SPEED_PRESETS[speedIdx].hz;
+  // Read CPU speed from the cpu_8080 card params
+  const cpuCard = slots.find(s => s.card === 'cpu_8080' || s.card.startsWith('cpu_'));
+  const cyclesPerSecond = Math.max(1, (cpuCard?.params?.speed_hz as number) ?? 2_000_000);
 
-  const rafRef         = useRef<number>(0);
-  const lastTimeRef    = useRef<number>(0);
-  const accumRef       = useRef<number>(0); // fractional cycle accumulator
+  const [selectedPreset, setSelectedPreset] = useState(SYSTEM_PRESETS[1].id);
+  const [rightTab, setRightTab] = useState<'trace' | 'memory'>('trace');
 
-  // Initialize WASM on mount
+  const rafRef      = useRef<number>(0);
+  const lastTimeRef = useRef<number>(0);
+  const accumRef    = useRef<number>(0);
+
   useEffect(() => { initWasm(); }, [initWasm]);
 
-  // Run loop — fractional accumulator for accurate slow speeds
+  // Fractional-accumulator run loop
   useEffect(() => {
     if (!running) return;
-    accumRef.current  = 0;
+    accumRef.current   = 0;
     lastTimeRef.current = 0;
 
     const loop = (now: number) => {
       const elapsed = lastTimeRef.current ? now - lastTimeRef.current : 16.67;
       lastTimeRef.current = now;
-
       accumRef.current += cyclesPerSecond * elapsed / 1000;
       const toRun = Math.floor(accumRef.current);
       accumRef.current -= toRun;
-
-      if (toRun > 0) {
-        // Cap per-frame burst so the UI stays responsive at high speeds
-        tick(Math.min(toRun, 200_000));
-      }
+      if (toRun > 0) tick(Math.min(toRun, 200_000));
       rafRef.current = requestAnimationFrame(loop);
     };
 
@@ -99,28 +87,28 @@ export default function App() {
         )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* Speed control */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ color: '#484f58', fontSize: 10, fontFamily: 'monospace' }}>CPU</span>
-            <select
-              value={speedIdx}
-              onChange={e => setSpeedIdx(Number(e.target.value))}
-              style={{
-                background: '#21262d',
-                border: '1px solid #30363d',
-                borderRadius: 4,
-                color: '#c9d1d9',
-                fontSize: 11,
-                fontFamily: 'monospace',
-                padding: '2px 4px',
-                cursor: 'pointer',
-              }}
-            >
-              {SPEED_PRESETS.map((p, i) => (
-                <option key={i} value={i}>{p.label}</option>
-              ))}
-            </select>
-          </div>
+          {/* System preset selector */}
+          <select
+            value={selectedPreset}
+            onChange={e => setSelectedPreset(e.target.value)}
+            disabled={running}
+            style={{
+              background: '#21262d', border: '1px solid #30363d', borderRadius: 4,
+              color: '#c9d1d9', fontSize: 11, fontFamily: 'monospace',
+              padding: '3px 6px', cursor: 'pointer', maxWidth: 220,
+            }}
+          >
+            {SYSTEM_PRESETS.map(p => (
+              <option key={p.id} value={p.id}>{p.label}</option>
+            ))}
+          </select>
+          <CtrlBtn
+            onClick={() => loadPreset(selectedPreset)}
+            color="#79c0ff"
+            disabled={!wasmReady || running}
+          >
+            ⚙ Load System
+          </CtrlBtn>
 
           {!wasmReady ? (
             <span style={{ color: '#8b949e', fontSize: 12 }}>Loading WASM…</span>
@@ -137,13 +125,6 @@ export default function App() {
                 ⏭ Step
               </CtrlBtn>
               <CtrlBtn onClick={reset} disabled={!wasmReady}>⟳ Reset</CtrlBtn>
-              <CtrlBtn
-                onClick={bootCpm}
-                color="#79c0ff"
-                disabled={!wasmReady || running}
-              >
-                ⚙ Boot CP/M
-              </CtrlBtn>
             </>
           )}
         </div>
@@ -198,18 +179,33 @@ export default function App() {
           <DiskManager />
         </div>
 
-        {/* Right column: terminal + trace */}
+        {/* Right column: terminal + tabbed trace/memory */}
         <div style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          padding: 12,
-          gap: 12,
-          overflow: 'hidden',
+          flex: 1, display: 'flex', flexDirection: 'column',
+          padding: 12, gap: 12, overflow: 'hidden',
         }}>
           <Terminal />
           <Divider />
-          <TraceViewer />
+          {/* Tab bar */}
+          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #30363d', flexShrink: 0 }}>
+            {(['trace', 'memory'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setRightTab(tab)}
+                style={{
+                  background: 'none', border: 'none', borderBottom: rightTab === tab ? '2px solid #79c0ff' : '2px solid transparent',
+                  color: rightTab === tab ? '#c9d1d9' : '#6e7681',
+                  fontSize: 11, padding: '4px 12px', cursor: 'pointer',
+                  fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1,
+                }}
+              >
+                {tab === 'trace' ? 'Bus Trace' : 'Memory'}
+              </button>
+            ))}
+          </div>
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            {rightTab === 'trace' ? <TraceViewer /> : <MemoryView />}
+          </div>
         </div>
       </div>
 

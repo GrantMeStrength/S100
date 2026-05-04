@@ -48,9 +48,9 @@ export const CARD_TYPES: CardTypeInfo[] = [
     accent: '#9b59b6',
     description: 'Intel 8080A processor',
     unique: true,
-    defaultParams: { speed_mhz: 2 },
+    defaultParams: { speed_hz: 2_000_000 },
     configFields: [
-      { key: 'speed_mhz', label: 'Speed (MHz)', type: 'number', min: 0.5, max: 10, step: 0.5, default: 2 },
+      { key: 'speed_hz', label: 'Clock speed (Hz)', type: 'number', min: 1, max: 4_000_000, step: 1, default: 2_000_000 },
     ],
   },
   {
