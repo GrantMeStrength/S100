@@ -89,9 +89,10 @@ export const CPM_MACHINE = JSON.stringify({
   name: 'CP/M 2.2 System',
   slots: [
     { slot: 0, card: 'cpu_8080' },
-    { slot: 1, card: 'ram',    params: { base: 0, size: 65536 } },
-    { slot: 2, card: 'serial', params: { data_port: 0, status_port: 1 } },
-    { slot: 3, card: 'fdc' },
+    { slot: 1, card: 'boot_rom', params: { phantom_port: 0x71 } },
+    { slot: 2, card: 'ram',      params: { base: 0, size: 65536 } },
+    { slot: 3, card: 'serial',   params: { data_port: 0, status_port: 1 } },
+    { slot: 4, card: 'fdc' },
   ],
 });
 

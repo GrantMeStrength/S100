@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::bus::{Bus, BusInterface};
-use crate::cards::{fdc::FloppyController, ram::RamCard, rom::RomCard, serial::SerialCard};
+use crate::cards::{boot_rom::BootRomCard, fdc::FloppyController, ram::RamCard, rom::RomCard, serial::SerialCard};
 use crate::cpu::Cpu8080;
 
 // ── Machine configuration types ───────────────────────────────────────────────
@@ -128,6 +128,12 @@ impl Machine {
             match slot.card.as_str() {
                 c if c.starts_with("cpu_") => {
                     // CPU is handled separately as self.cpu
+                }
+
+                "boot_rom" => {
+                    let phantom_port = slot.params.get("phantom_port")
+                        .and_then(Value::as_u64).unwrap_or(0x71) as u8;
+                    self.bus.add_card(Box::new(BootRomCard::new("boot_rom", phantom_port)));
                 }
 
                 "ram" | "ram_64k" => {

@@ -29,6 +29,18 @@ export interface CardTypeInfo {
 
 export const CARD_TYPES: CardTypeInfo[] = [
   {
+    id: 'boot_rom',
+    label: 'Shadow ROM (JAIR)',
+    shortLabel: 'BROM',
+    color: '#1a1a0a',
+    accent: '#b8860b',
+    description: 'JAIR-style bootstrap ROM at 0x0000; pages out via I/O port',
+    defaultParams: { phantom_port: 0x71 },
+    configFields: [
+      { key: 'phantom_port', label: 'Phantom port (JAIR default: 0x71)', type: 'hex', min: 0, max: 0xFF, default: 0x71 },
+    ],
+  },
+  {
     id: 'cpu_8080',
     label: 'Intel 8080 CPU',
     shortLabel: 'CPU',
