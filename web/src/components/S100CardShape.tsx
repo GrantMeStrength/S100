@@ -80,27 +80,45 @@ export function S100CardShape({
       </div>
 
       {/* ── Edge connector ───────────────────────────────────────────── */}
+      {/* Real S-100: 10" card, ~6" connector centred, ~2" plain PCB each side */}
       <div style={{
-        background: '#140f00',
+        background: info.color,
         border,
-        borderTop: '1px solid #1e1600',
+        borderTop: `1px solid ${disabled ? '#21262d' : info.accent}44`,
         borderRadius: '0 0 3px 3px',
         height: 16,
-        padding: '2px 4px',
         display: 'flex',
-        gap: 2,
         alignItems: 'stretch',
         opacity: disabled ? 0.38 : 1,
+        overflow: 'hidden',
       }}>
-        {Array.from({ length: contacts }, (_, i) => (
-          <div key={i} style={{
-            flex: 1,
-            background: i % 2 === 0 ? '#c49a1a' : '#a07a10',
-            borderRadius: '0 0 1px 1px',
-            boxShadow: i % 2 === 0 ? 'inset 0 1px 1px rgba(255,255,255,0.15)' : 'none',
-            minWidth: 2,
-          }} />
-        ))}
+        {/* Left PCB wing (~20%) */}
+        <div style={{ flex: '0 0 20%', background: info.color }} />
+
+        {/* Gold contacts (~60%) */}
+        <div style={{
+          flex: '0 0 60%',
+          background: '#140f00',
+          display: 'flex',
+          gap: 2,
+          padding: '2px 2px',
+          alignItems: 'stretch',
+          borderLeft:  `1px solid #2a1e00`,
+          borderRight: `1px solid #2a1e00`,
+        }}>
+          {Array.from({ length: contacts }, (_, i) => (
+            <div key={i} style={{
+              flex: 1,
+              background: i % 2 === 0 ? '#c49a1a' : '#a07a10',
+              borderRadius: '0 0 1px 1px',
+              boxShadow: i % 2 === 0 ? 'inset 0 1px 1px rgba(255,255,255,0.15)' : 'none',
+              minWidth: 1,
+            }} />
+          ))}
+        </div>
+
+        {/* Right PCB wing (~20%) */}
+        <div style={{ flex: '0 0 20%', background: info.color }} />
       </div>
     </div>
   );

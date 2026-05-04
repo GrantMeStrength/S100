@@ -3,7 +3,6 @@ import type { SlotEntry } from '../store/machineStore';
 import { useMachineStore } from '../store/machineStore';
 import { getCardType } from '../config/cardTypes';
 import type { ConfigField } from '../config/cardTypes';
-import { S100CardShape } from './S100CardShape';
 
 interface Props {
   slot: number;
@@ -25,9 +24,9 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
   const handleFileLoad = (file: File) => {
     const reader = new FileReader();
     reader.onload = e => {
-      const buf  = e.target!.result as ArrayBuffer;
+      const buf   = e.target!.result as ArrayBuffer;
       const bytes = new Uint8Array(buf);
-      let binary = '';
+      let binary  = '';
       bytes.forEach(b => (binary += String.fromCharCode(b)));
       setParam('data_base64', btoa(binary));
       setParam('size', bytes.length);
@@ -41,75 +40,151 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
     onClose();
   };
 
+  const CONTACTS = 26;
+
   return (
     <div
       style={{
         position: 'fixed', inset: 0,
-        background: 'rgba(0,0,0,0.72)',
+        background: 'rgba(0,0,0,0.80)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 1000,
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
+      {/* ── The card itself ─────────────────────────────────────────── */}
       <div style={{
-        background: '#161b22',
-        border: `1px solid ${info.accent}`,
-        borderRadius: 8,
-        padding: 20,
-        minWidth: 340,
-        maxWidth: 480,
-        width: '90vw',
-        boxShadow: `0 0 30px ${info.accent}33`,
+        display: 'flex', flexDirection: 'column',
+        width: 'min(640px, 92vw)',
+        boxShadow: `0 0 48px ${info.accent}44`,
+        userSelect: 'none',
       }}>
-        {/* Header — S-100 card shape */}
-        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', marginBottom: 18 }}>
-          <S100CardShape info={info} contacts={22} style={{ width: 110, flexShrink: 0 }}>
-            <div style={{ color: '#c9d1d9', fontSize: 12, fontWeight: 600, lineHeight: 1.3, marginLeft: 2, marginBottom: 2 }}>
-              {info.label}
+
+        {/* ── PCB body (2:1 aspect) ──────────────────────────────────── */}
+        <div style={{
+          background: info.color,
+          border: `2px solid ${info.accent}`,
+          borderBottom: 'none',
+          borderRadius: '6px 6px 0 0',
+          aspectRatio: '2/1',
+          position: 'relative',
+          padding: '14px 16px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}>
+          {/* Mounting holes */}
+          <Hole style={{ position: 'absolute', top: 8, left: 8 }} />
+          <Hole style={{ position: 'absolute', top: 8, right: 8 }} />
+          <Hole style={{ position: 'absolute', bottom: 8, left: 8 }} />
+          <Hole style={{ position: 'absolute', bottom: 8, right: 8 }} />
+
+          {/* Card header */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
+            <div style={{ flex: 1, paddingLeft: 16 }}>
+              <div style={{
+                color: info.accent,
+                fontSize: 10,
+                fontFamily: 'monospace',
+                letterSpacing: 2,
+                marginBottom: 2,
+              }}>
+                {info.shortLabel}  ·  SLOT {slot}
+              </div>
+              <div style={{ color: '#e6edf3', fontSize: 18, fontWeight: 700, lineHeight: 1.1 }}>
+                {info.label}
+              </div>
+              <div style={{ color: '#6e7681', fontSize: 10, marginTop: 3 }}>
+                {info.description}
+              </div>
             </div>
-            <div style={{ color: '#6e7681', fontSize: 9, lineHeight: 1.4, marginLeft: 2 }}>
-              {info.description}
-            </div>
-          </S100CardShape>
-          <div>
-            <div style={{ color: '#484f58', fontSize: 10, marginBottom: 4 }}>SLOT {slot}</div>
-            <div style={{ color: '#c9d1d9', fontSize: 15, fontWeight: 600 }}>{info.label}</div>
-            <div style={{ color: '#8b949e', fontSize: 11, marginTop: 2 }}>Configuration</div>
+            <button
+              onClick={onClose}
+              style={{
+                background: 'none', border: 'none',
+                color: '#484f58', fontSize: 18, cursor: 'pointer',
+                lineHeight: 1, padding: '0 4px', marginTop: -2,
+              }}
+              title="Close"
+            >✕</button>
+          </div>
+
+          {/* Config area — scrollable if content overflows */}
+          <div style={{ flex: 1, overflowY: 'auto', paddingLeft: 16, paddingRight: 4 }}>
+            {info.stub ? (
+              <div style={{
+                border: `1px solid ${info.accent}44`,
+                borderRadius: 4,
+                padding: '10px 12px',
+                color: '#8b949e',
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}>
+                ⚠ {info.stub}
+              </div>
+            ) : info.configFields.length === 0 ? (
+              <div style={{ color: '#484f58', fontSize: 12 }}>No configurable parameters.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {info.configFields.map(field => (
+                  <FieldRow
+                    key={field.key}
+                    field={field}
+                    value={params[field.key]}
+                    fileName={params['_fileName'] as string | undefined}
+                    hasBase64={!!params['data_base64']}
+                    onChange={v => setParam(field.key, v)}
+                    onFile={handleFileLoad}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Action buttons */}
+          <div style={{
+            display: 'flex', gap: 8, justifyContent: 'flex-end',
+            paddingLeft: 16, paddingTop: 8,
+          }}>
+            <CardBtn onClick={onClose} bg="#21262d" color="#8b949e">Cancel</CardBtn>
+            <CardBtn onClick={handleApply} bg={info.accent} color="#0d1117">Apply</CardBtn>
           </div>
         </div>
 
-        {info.stub ? (
+        {/* ── Edge connector ─────────────────────────────────────────── */}
+        {/* Real S-100: 10" card, ~6" connector centred, ~2" plain PCB each side */}
+        <div style={{
+          background: info.color,
+          border: `2px solid ${info.accent}`,
+          borderTop: `1px solid ${info.accent}44`,
+          borderRadius: '0 0 4px 4px',
+          height: 22,
+          display: 'flex',
+          alignItems: 'stretch',
+          overflow: 'hidden',
+        }}>
+          <div style={{ flex: '0 0 20%', background: info.color }} />
           <div style={{
-            background: '#21262d',
-            border: '1px solid #30363d',
-            borderRadius: 4,
-            padding: 12,
-            color: '#8b949e',
-            fontSize: 12,
-            marginBottom: 16,
-            lineHeight: 1.5,
+            flex: '0 0 60%',
+            background: '#140f00',
+            display: 'flex',
+            gap: 2,
+            padding: '3px 3px',
+            alignItems: 'stretch',
+            borderLeft:  '1px solid #2a1e00',
+            borderRight: '1px solid #2a1e00',
           }}>
-            ⚠ {info.stub}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
-            {info.configFields.map(field => (
-              <FieldRow
-                key={field.key}
-                field={field}
-                value={params[field.key]}
-                fileName={params['_fileName'] as string | undefined}
-                hasBase64={!!params['data_base64']}
-                onChange={v => setParam(field.key, v)}
-                onFile={handleFileLoad}
-              />
+            {Array.from({ length: CONTACTS }, (_, i) => (
+              <div key={i} style={{
+                flex: 1,
+                background: i % 2 === 0 ? '#c49a1a' : '#a07a10',
+                borderRadius: '0 0 2px 2px',
+                boxShadow: i % 2 === 0 ? 'inset 0 1px 1px rgba(255,255,255,0.15)' : 'none',
+                minWidth: 1,
+              }} />
             ))}
           </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <ModalBtn onClick={onClose} bg="#21262d" color="#c9d1d9">Cancel</ModalBtn>
-          <ModalBtn onClick={handleApply} bg={info.accent} color="#0d1117">Apply</ModalBtn>
+          <div style={{ flex: '0 0 20%', background: info.color }} />
         </div>
       </div>
     </div>
@@ -131,7 +206,7 @@ function FieldRow({
   const fileRef = useRef<HTMLInputElement>(null);
 
   const label = (
-    <label style={{ display: 'block', color: '#8b949e', fontSize: 11, marginBottom: 4 }}>
+    <label style={{ display: 'block', color: '#8b949e', fontSize: 10, marginBottom: 3 }}>
       {field.label}
     </label>
   );
@@ -142,9 +217,9 @@ function FieldRow({
       <div>
         {label}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <ModalBtn onClick={() => fileRef.current?.click()} bg="#21262d" color="#c9d1d9">
+          <CardBtn onClick={() => fileRef.current?.click()} bg="#21262d" color="#c9d1d9">
             Choose file…
-          </ModalBtn>
+          </CardBtn>
           <span style={{ color: loaded ? '#3fb950' : '#484f58', fontSize: 11 }}>
             {loaded ?? 'No file loaded'}
           </span>
@@ -201,17 +276,29 @@ function FieldRow({
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  background: '#0d1117',
+  background: 'rgba(0,0,0,0.35)',
   border: '1px solid #30363d',
-  borderRadius: 4,
+  borderRadius: 3,
   color: '#c9d1d9',
-  padding: '5px 8px',
+  padding: '4px 8px',
   fontSize: 12,
   fontFamily: 'monospace',
   boxSizing: 'border-box',
 };
 
-function ModalBtn({
+function Hole({ style }: { style: React.CSSProperties }) {
+  return (
+    <div style={{
+      width: 7, height: 7,
+      borderRadius: '50%',
+      border: '1px solid rgba(255,255,255,0.10)',
+      background: 'rgba(0,0,0,0.6)',
+      ...style,
+    }} />
+  );
+}
+
+function CardBtn({
   onClick, children, bg, color,
 }: {
   onClick: () => void;
@@ -225,12 +312,13 @@ function ModalBtn({
       style={{
         background: bg,
         border: 'none',
-        borderRadius: 4,
+        borderRadius: 3,
         color,
-        padding: '6px 14px',
-        fontSize: 12,
+        padding: '5px 14px',
+        fontSize: 11,
         cursor: 'pointer',
         fontFamily: 'monospace',
+        letterSpacing: 0.5,
       }}
     >
       {children}
