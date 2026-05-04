@@ -7,7 +7,6 @@
  */
 import React, { useState } from 'react';
 import type { ActionEntry, ToggleEntry } from '../store/machineStore';
-import { applyToggleEntries } from '../store/machineStore';
 import { useMachineStore } from '../store/machineStore';
 
 const HEX4  = /^[0-9A-Fa-f]{4}$/;
@@ -15,10 +14,11 @@ const HEX2P = /^(?:[0-9A-Fa-f]{2})+$/;
 
 function validateEntry(e: ToggleEntry): string | null {
   if (!HEX4.test(e.addr))  return `Address "${e.addr}" must be 4 hex digits (e.g. F800)`;
-  if (!e.bytes)             return 'Bytes field is empty';
-  if (!HEX2P.test(e.bytes)) return `Bytes "${e.bytes}" must be pairs of hex digits (e.g. 3EAA)`;
+  const cleanBytes = e.bytes.replace(/\s/g, '');
+  if (!cleanBytes)             return 'Bytes field is empty';
+  if (!HEX2P.test(cleanBytes)) return `Bytes must be pairs of hex digits (e.g. 3E AA D3 FF)`;
   const addr  = parseInt(e.addr, 16);
-  const count = e.bytes.length / 2;
+  const count = cleanBytes.length / 2;
   if (addr + count - 1 > 0xFFFF) return `Address 0x${e.addr} + ${count} bytes overflows 0xFFFF`;
   return null;
 }
@@ -91,7 +91,7 @@ function EntryRow({ entry, onChange, onDelete, error }: RowProps) {
 
         {/* Byte count hint */}
         <span style={{ color: '#484f58', fontSize: 9, fontFamily: 'monospace', width: 36, flexShrink: 0 }}>
-          {HEX2P.test(bytesStr) ? `${bytesStr.replace(/\s/g,'').length / 2}B` : '—'}
+          {HEX2P.test(bytesStr.replace(/\s/g,'')) ? `${bytesStr.replace(/\s/g,'').length / 2}B` : '—'}
         </span>
 
         {/* Delete */}
@@ -144,13 +144,16 @@ export function ToggleConfigModal({ action, onClose }: Props) {
   };
 
   const handleApply = () => {
-    // Re-validate all entries at submit time (catches unfocused fields)
+    // Re-validate at submit time (catches unfocused fields) — do NOT write here,
+    // since updateAction reloads the machine which would wipe anything we wrote.
     const normalised = entries.map(e => ({
       addr:  e.addr.replace(/\s/g, '').toUpperCase(),
       bytes: e.bytes.replace(/\s/g, '').toUpperCase(),
     }));
-    const err = applyToggleEntries(normalised);
-    if (err) { setSubmitError(err); return; }
+    for (const e of normalised) {
+      const err = validateEntry(e);
+      if (err) { setSubmitError(err); return; }
+    }
     updateAction(action.id, { entries: normalised });
     onClose();
   };

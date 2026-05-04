@@ -84,16 +84,18 @@ export function applyToggleEntries(entries: ToggleEntry[]): string | null {
   // Validate all before writing any
   for (const e of entries) {
     if (!HEX4.test(e.addr)) return `Bad address: "${e.addr}" — must be 4 hex digits`;
-    if (!e.bytes || !HEX2P.test(e.bytes)) return `Bad bytes for ${e.addr}: "${e.bytes}" — must be pairs of hex digits`;
+    const cleanBytes = e.bytes.replace(/\s/g, '');
+    if (!cleanBytes || !HEX2P.test(cleanBytes)) return `Bad bytes for ${e.addr}: must be pairs of hex digits`;
     const addr = parseInt(e.addr, 16);
-    const count = e.bytes.length / 2;
+    const count = cleanBytes.length / 2;
     if (addr + count - 1 > 0xFFFF) return `Entry at ${e.addr}: ${count} bytes would overflow past 0xFFFF`;
   }
   // Write
   for (const e of entries) {
     const addr = parseInt(e.addr, 16);
-    for (let i = 0; i < e.bytes.length; i += 2) {
-      const byte = parseInt(e.bytes.slice(i, i + 2), 16);
+    const cleanBytes = e.bytes.replace(/\s/g, '');
+    for (let i = 0; i < cleanBytes.length; i += 2) {
+      const byte = parseInt(cleanBytes.slice(i, i + 2), 16);
       wasm.writeMemory(addr + i / 2, byte);
     }
   }
@@ -258,6 +260,8 @@ export interface MachineStore {
   addAction: () => void;
   removeAction: (id: string) => void;
   updateAction: (id: string, params: ActionEntry['params']) => void;
+  /** Immediately write all toggle entries into RAM (without starting the CPU). */
+  applyActionsNow: () => void;
 }
 
 const defaultParsed = parseMachineConfig(DEFAULT_MACHINE);
@@ -537,5 +541,16 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
     set({ actions: newActions, machineJson: json, actionsApplied: false, running: false,
           terminalOutput: '', traceEntries: [], traceCursor: 0 });
+  },
+
+  applyActionsNow: () => {
+    const state = get();
+    for (const action of state.actions) {
+      if (action.type === 'toggle') {
+        const err = applyToggleEntries(action.params.entries);
+        if (err) { set({ error: `Toggle action error: ${err}` }); return; }
+      }
+    }
+    set({ actionsApplied: true, error: null });
   },
 }));

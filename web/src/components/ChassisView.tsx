@@ -25,8 +25,11 @@ export function ChassisView() {
   const removeCard = useMachineStore(s => s.removeCard);
   const moveCard   = useMachineStore(s => s.moveCard);
   const actions    = useMachineStore(s => s.actions);
+  const running    = useMachineStore(s => s.running);
+  const actionsApplied = useMachineStore(s => s.actionsApplied);
   const addAction  = useMachineStore(s => s.addAction);
   const removeAction = useMachineStore(s => s.removeAction);
+  const applyActionsNow = useMachineStore(s => s.applyActionsNow);
 
   const [configSlot,   setConfigSlot]   = useState<number | null>(null);
   const [configAction, setConfigAction] = useState<ActionEntry | null>(null);
@@ -159,53 +162,76 @@ export function ChassisView() {
             No actions — add a Toggle to pre-load bytes into RAM
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {actions.map(action => (
-              <div
-                key={action.id}
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {actions.map(action => (
+                <div
+                  key={action.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '3px 6px',
+                    background: '#0d1117',
+                    border: '1px solid #2a3d2a',
+                    borderRadius: 3,
+                    minHeight: 30,
+                  }}
+                >
+                  <div style={{
+                    background: '#0f2d0f',
+                    border: '1px solid #2ea043',
+                    borderRadius: 2,
+                    padding: '1px 5px',
+                    fontSize: 9,
+                    color: '#2ea043',
+                    fontFamily: 'monospace',
+                    flexShrink: 0,
+                    letterSpacing: 0.5,
+                  }}>
+                    TOGGLE
+                  </div>
+
+                  <span style={{ color: '#c9d1d9', fontSize: 11, flex: 1, fontFamily: 'monospace' }}>
+                    {action.params.entries.length === 0
+                      ? '(no entries)'
+                      : action.params.entries.map(e => `${e.addr}:${e.bytes.replace(/\s/g,'').length/2}B`).join(', ')}
+                  </span>
+
+                  <button
+                    onClick={() => setConfigAction(action)}
+                    title="Configure"
+                    style={iconBtn}
+                  >⚙</button>
+
+                  <button
+                    onClick={() => removeAction(action.id)}
+                    title="Remove action"
+                    style={{ ...iconBtn, color: '#f85149' }}
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+
+            {/* Manual apply button — visible when CPU is stopped */}
+            {!running && (
+              <button
+                onClick={applyActionsNow}
+                title="Write toggle bytes into RAM now"
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '3px 6px',
-                  background: '#0d1117',
-                  border: '1px solid #2a3d2a',
+                  background: actionsApplied ? '#0f2d0f' : '#0d2d1a',
+                  border: `1px solid ${actionsApplied ? '#2ea043' : '#3fb950'}`,
                   borderRadius: 3,
-                  minHeight: 30,
+                  color: actionsApplied ? '#2ea043' : '#3fb950',
+                  cursor: 'pointer',
+                  fontSize: 10,
+                  padding: '4px 0',
+                  fontFamily: 'monospace',
+                  letterSpacing: 0.5,
                 }}
               >
-                <div style={{
-                  background: '#0f2d0f',
-                  border: '1px solid #2ea043',
-                  borderRadius: 2,
-                  padding: '1px 5px',
-                  fontSize: 9,
-                  color: '#2ea043',
-                  fontFamily: 'monospace',
-                  flexShrink: 0,
-                  letterSpacing: 0.5,
-                }}>
-                  TOGGLE
-                </div>
-
-                <span style={{ color: '#c9d1d9', fontSize: 11, flex: 1, fontFamily: 'monospace' }}>
-                  {action.params.entries.length === 0
-                    ? '(no entries)'
-                    : action.params.entries.map(e => `${e.addr}:${e.bytes.length/2}B`).join(', ')}
-                </span>
-
-                <button
-                  onClick={() => setConfigAction(action)}
-                  title="Configure"
-                  style={iconBtn}
-                >⚙</button>
-
-                <button
-                  onClick={() => removeAction(action.id)}
-                  title="Remove action"
-                  style={{ ...iconBtn, color: '#f85149' }}
-                >✕</button>
-              </div>
-            ))}
-          </div>
+                {actionsApplied ? '✓ Applied' : '▶ Apply Now'}
+              </button>
+            )}
+          </>
         )}
       </div>
 
