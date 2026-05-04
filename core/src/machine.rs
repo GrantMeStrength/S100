@@ -502,11 +502,13 @@ impl Machine {
                     let status = entry[0];
                     if status == 0xE5 || status > 0x0F { continue; }
                     if entry[12] != 0 { continue; } // only extent 0
-                    // Exact match (no wildcards)
+                    // Exact match — treat space (0x20) and null (0x00) as equivalent padding
                     let ok = (0..11).all(|i| {
                         let p = name[i] & 0x7F;
                         let e = entry[1 + i] & 0x7F;
-                        p == b'?' || p == e
+                        let p_blank = p == b' ' || p == 0;
+                        let e_blank = e == b' ' || e == 0;
+                        p == b'?' || (p_blank && e_blank) || p == e
                     });
                     if !ok { continue; }
                     // Copy EX/S1/S2/RC and block allocation table into FCB
