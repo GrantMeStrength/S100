@@ -57,22 +57,28 @@ pub struct MachineState {
     pub bus_cycles: u64,
 }
 
+// ── CP/M disk geometry constants (standard 8-inch) ───────────────────────────
+const CPM_BLOCK_SIZE: usize = 1024;
+const CPM_DIR_ENTRIES: usize = 64;
+/// Byte offset where block 0 / directory begins (track 2 × 26 sectors × 128 bytes).
+const CPM_DATA_START: usize = 2 * 26 * 128; // 6656
+
 // ── Machine ───────────────────────────────────────────────────────────────────
 
 pub struct Machine {
     pub name: String,
     pub cpu: Cpu8080,
     pub bus: Bus,
-    /// Index into bus.cards for the serial card (console I/O).
     pub serial_idx: Option<usize>,
-    /// Index into bus.cards for the FDC card (disk I/O).
     pub fdc_idx: Option<usize>,
-    /// Partial input line being assembled for BDOS function 10 (readline).
     input_line_buf: Vec<u8>,
-    /// True when the user pressed Enter and a complete line is ready.
     input_line_ready: bool,
-    /// Current DMA address used by BDOS disk functions (set by function 26).
     bdos_dma_addr: u16,
+    /// Directory scan position (entry index 0–63).
+    dir_scan_idx: usize,
+    dir_scan_drive: usize,
+    /// 11-byte name+ext wildcard pattern ('?' = any).
+    dir_scan_pattern: [u8; 11],
 }
 
 impl Machine {
@@ -86,6 +92,9 @@ impl Machine {
             input_line_buf: Vec::new(),
             input_line_ready: false,
             bdos_dma_addr: 0x0080,
+            dir_scan_idx: 0,
+            dir_scan_drive: 0,
+            dir_scan_pattern: [b'?'; 11],
         }
     }
 
@@ -101,6 +110,9 @@ impl Machine {
         self.input_line_buf.clear();
         self.input_line_ready = false;
         self.bdos_dma_addr = 0x0080;
+        self.dir_scan_idx = 0;
+        self.dir_scan_drive = 0;
+        self.dir_scan_pattern = [b'?'; 11];
 
         // Validate: exactly one CPU card
         let cpu_count = config.slots.iter().filter(|s| s.card.starts_with("cpu_")).count();
@@ -475,22 +487,116 @@ impl Machine {
             }
 
             // ── 15: Open File ─────────────────────────────────────────────
-            15 => { self.cpu.a = 0xFF; true } // stub: not found
+            15 => {
+                // Read the 11-byte name+ext from FCB at DE+1
+                let mut name = [b' '; 11];
+                for i in 0..11u16 {
+                    name[i as usize] = self.bus.mem_read(param_de.wrapping_add(1 + i)) & 0x7F;
+                }
+                let drive = self.current_drive();
+                // Search directory for exact match with EX == 0
+                let mut found = false;
+                for idx in 0..CPM_DIR_ENTRIES {
+                    let entry = self.disk_read_bytes(drive, CPM_DATA_START + idx * 32, 32);
+                    if entry.len() < 32 { continue; }
+                    let status = entry[0];
+                    if status == 0xE5 || status > 0x0F { continue; }
+                    if entry[12] != 0 { continue; } // only extent 0
+                    // Exact match (no wildcards)
+                    let ok = (0..11).all(|i| {
+                        let p = name[i] & 0x7F;
+                        let e = entry[1 + i] & 0x7F;
+                        p == b'?' || p == e
+                    });
+                    if !ok { continue; }
+                    // Copy EX/S1/S2/RC and block allocation table into FCB
+                    for i in 12..32u16 {
+                        let b = entry[i as usize];
+                        self.bus.mem_write(param_de.wrapping_add(i), b);
+                    }
+                    // CR = 0
+                    self.bus.mem_write(param_de.wrapping_add(32), 0);
+                    self.cpu.a = 0;
+                    found = true;
+                    break;
+                }
+                if !found { self.cpu.a = 0xFF; }
+                true
+            }
 
             // ── 16: Close File ────────────────────────────────────────────
-            16 => { self.cpu.a = 0xFF; true }
+            16 => { self.cpu.a = 0; true }
 
             // ── 17: Search First ──────────────────────────────────────────
-            17 => { self.cpu.a = 0xFF; true }
+            17 => {
+                // Copy search pattern from FCB at DE+1
+                for i in 0..11u16 {
+                    self.dir_scan_pattern[i as usize] =
+                        self.bus.mem_read(param_de.wrapping_add(1 + i)) & 0x7F;
+                }
+                self.dir_scan_drive = self.current_drive();
+                self.dir_scan_idx = 0;
+                self.do_dir_search()
+            }
 
             // ── 18: Search Next ───────────────────────────────────────────
-            18 => { self.cpu.a = 0xFF; true }
+            18 => {
+                self.do_dir_search()
+            }
 
             // ── 19: Delete File ───────────────────────────────────────────
             19 => { self.cpu.a = 0xFF; true }
 
             // ── 20: Read Sequential ───────────────────────────────────────
-            20 => { self.cpu.a = 1; true }
+            20 => {
+                let ex  = self.bus.mem_read(param_de.wrapping_add(12)) as usize;
+                let rc  = self.bus.mem_read(param_de.wrapping_add(15)) as usize;
+                let cr  = self.bus.mem_read(param_de.wrapping_add(32)) as usize;
+
+                let logical_rec = ex * 128 + cr;
+                let block_idx   = logical_rec / 8;
+
+                if block_idx >= 16 {
+                    self.cpu.a = 1; // past extent
+                    return true;
+                }
+
+                // Check if we've read all records in this extent
+                if rc > 0 && cr >= rc {
+                    self.cpu.a = 1; // EOF for this extent
+                    return true;
+                }
+
+                let block_num = self.bus.mem_read(
+                    param_de.wrapping_add(16).wrapping_add(block_idx as u16)
+                ) as usize;
+
+                if block_num == 0 {
+                    self.cpu.a = 1; // unallocated = EOF
+                    return true;
+                }
+
+                let rec_in_block = logical_rec % 8;
+                let byte_off = CPM_DATA_START + block_num * CPM_BLOCK_SIZE
+                    + rec_in_block * 128;
+
+                let drive = self.current_drive();
+                let data = self.disk_read_bytes(drive, byte_off, 128);
+                let mut sector = [0u8; 128];
+                let len = data.len().min(128);
+                sector[..len].copy_from_slice(&data[..len]);
+                self.write_dma_bytes(&sector);
+
+                // Advance CR / EX
+                let new_cr = cr + 1;
+                let (new_ex, final_cr) =
+                    if new_cr >= 128 { (ex + 1, 0) } else { (ex, new_cr) };
+
+                self.bus.mem_write(param_de.wrapping_add(32), final_cr as u8);
+                self.bus.mem_write(param_de.wrapping_add(12), new_ex as u8);
+                self.cpu.a = 0;
+                true
+            }
 
             // ── 21: Write Sequential ──────────────────────────────────────
             21 => { self.cpu.a = 1; true }
@@ -535,6 +641,85 @@ impl Machine {
                 true
             }
         }
+    }
+
+    // ── Disk / BDOS file system helpers ───────────────────────────────────
+
+    /// Return the currently selected drive number (0=A).
+    fn current_drive(&self) -> usize {
+        if let Some(fdc_idx) = self.fdc_idx {
+            if let Some(fdc) = self.bus.cards.get(fdc_idx)
+                .and_then(|c| c.as_any().downcast_ref::<FloppyController>())
+            {
+                return fdc.selected_drive;
+            }
+        }
+        0
+    }
+
+    /// Read `len` bytes from a drive image at `offset`. Returns an owned Vec
+    /// (releases the borrow immediately) so callers can safely take a &mut self
+    /// borrow afterward.
+    fn disk_read_bytes(&self, drive: usize, offset: usize, len: usize) -> Vec<u8> {
+        let fdc_idx = match self.fdc_idx { Some(i) => i, None => return vec![0; len] };
+        let fdc = match self.bus.cards.get(fdc_idx)
+            .and_then(|c| c.as_any().downcast_ref::<FloppyController>())
+        { Some(f) => f, None => return vec![0; len] };
+        let disk = match &fdc.drives[drive.min(3)] {
+            Some(d) => d,
+            None => return vec![0; len],
+        };
+        let mut out = vec![0u8; len];
+        if offset < disk.len() {
+            let end = (offset + len).min(disk.len());
+            out[..end - offset].copy_from_slice(&disk[offset..end]);
+        }
+        out
+    }
+
+    /// Write `data` into bus memory starting at the current BDOS DMA address.
+    fn write_dma_bytes(&mut self, data: &[u8]) {
+        let addr = self.bdos_dma_addr;
+        for (i, &byte) in data.iter().enumerate() {
+            self.bus.mem_write(addr.wrapping_add(i as u16), byte);
+        }
+    }
+
+    /// Core Search First/Next logic — scans from `dir_scan_idx` and returns
+    /// true when complete (whether a match was found or not).
+    fn do_dir_search(&mut self) -> bool {
+        let pattern = self.dir_scan_pattern; // copy; [u8;11] is Copy
+        let drive = self.dir_scan_drive;
+
+        while self.dir_scan_idx < CPM_DIR_ENTRIES {
+            let idx = self.dir_scan_idx;
+            self.dir_scan_idx += 1;
+
+            let entry = self.disk_read_bytes(drive, CPM_DATA_START + idx * 32, 32);
+            if entry.len() < 32 { continue; }
+
+            let status = entry[0];
+            if status == 0xE5 || status > 0x0F { continue; } // deleted / non-user
+
+            // Pattern match (bit 7 stripped from both)
+            let matched = (0..11usize).all(|i| {
+                let p = pattern[i] & 0x7F;
+                let e = entry[1 + i] & 0x7F;
+                p == b'?' || p == e
+            });
+            if !matched { continue; }
+
+            // Fill DMA with the 4-entry 128-byte block aligned to idx
+            let aligned = idx & !3;
+            let block = self.disk_read_bytes(drive, CPM_DATA_START + aligned * 32, 128);
+            self.write_dma_bytes(&block);
+
+            self.cpu.a = (idx & 3) as u8;
+            return true;
+        }
+
+        self.cpu.a = 0xFF; // not found
+        true
     }
 
     // ── Console helpers ────────────────────────────────────────────────────
