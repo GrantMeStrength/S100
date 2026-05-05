@@ -342,6 +342,29 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     cpmDiskLabel: 'IMSAICPM60.dsk',
   },
   {
+    // Same IMSAI hardware as above, but the boot disk includes MBASIC v5.21.
+    // Type MBASIC at the A> prompt to start Microsoft BASIC-80.
+    id: 'imsai_fif_mbasic',
+    label: 'IMSAI 8080 — CP/M 2.2 + MBASIC (MPU-A ROM)',
+    machine: JSON.stringify({
+      name: 'IMSAI 8080 (CP/M + MBASIC)',
+      slots: [
+        { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
+        { slot: 1, card: 'ram',      params: { base: 0, size: 65536 } },
+        { slot: 2, card: 'serial',   params: { data_port: 0x02, status_port: 0x03, status_rx_bit: 1, status_tx_bit: 0 } },
+        { slot: 3, card: 'fdc_fif',  params: { tracks: 77, sectors: 26, sector_size: 128 } },
+      ],
+      actions: [
+        { id: 'imsai-fif-vector', type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 D8' }] } },
+      ],
+    }),
+    cpm: true,
+    cpmBootRomUrl: '/imsai-mpu-a.bin',
+    cpmBootRomAddr: 0xD800,
+    cpmDiskUrl: '/IMSAICPM60_MBASIC.dsk',
+    cpmDiskLabel: 'IMSAICPM60_MBASIC.dsk',
+  },
+  {
     id: 'memon80',
     label: 'Memon/80 v3.06 Monitor (JAIR)',
     romUrl: '/roms/memon80.bin',
