@@ -169,6 +169,26 @@ export const CARD_TYPES: CardTypeInfo[] = [
     defaultParams: {},
     configFields: [],
   },
+  {
+    id: 'dcdd_88',
+    label: 'MITS 88-DCDD (Disk Controller)',
+    shortLabel: 'DCDD',
+    color: '#2e1a0a',
+    accent: '#d4802a',
+    description: 'MITS 88-DCDD hard-sector floppy controller. 77 tracks × 32 sectors × 137 bytes. Ports 0x08–0x0A.',
+    defaultParams: {},
+    configFields: [],
+  },
+  {
+    id: 'sio_88_2sio',
+    label: 'MITS 88-2SIO (Serial I/O)',
+    shortLabel: '2SIO',
+    color: '#0d2030',
+    accent: '#3a9fd4',
+    description: 'MITS 88-2SIO dual MC6850 ACIA serial card. Status 0x10, data 0x11.',
+    defaultParams: {},
+    configFields: [],
+  },
 ];
 
 export function getCardType(id: string): CardTypeInfo | undefined {
