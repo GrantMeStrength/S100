@@ -4,6 +4,7 @@ use serde_json::Value;
 use crate::bus::{Bus, BusInterface};
 use crate::cards::{
     boot_rom::BootRomCard,
+    cpu_z80::Z80Card,
     dazzler::DazzlerCard,
     dcdd::Dcdd88Card,
     fdc::FloppyController,
@@ -15,6 +16,7 @@ use crate::cards::{
     sio_88::Sio88Card,
 };
 use crate::cpu::Cpu8080;
+use crate::cpu_z80::CpuZ80;
 
 // ── Machine configuration types ───────────────────────────────────────────────
 
@@ -39,6 +41,7 @@ pub struct MachineConfig {
 
 #[derive(Debug, Serialize)]
 pub struct CpuState {
+    pub cpu_type: String,
     pub a: u8,
     pub b: u8,
     pub c: u8,
@@ -52,6 +55,20 @@ pub struct CpuState {
     pub halted: bool,
     pub interrupts_enabled: bool,
     pub cycles: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ix: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iy: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub i: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iff2: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interrupt_mode: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alternate: Option<AltRegisterState>,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,6 +78,24 @@ pub struct FlagState {
     pub ac: bool,
     pub p: bool,
     pub cy: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub h: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pv: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub n: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AltRegisterState {
+    pub a: u8,
+    pub f: u8,
+    pub b: u8,
+    pub c: u8,
+    pub d: u8,
+    pub e: u8,
+    pub h: u8,
+    pub l: u8,
 }
 
 #[derive(Debug, Serialize)]
@@ -75,9 +110,17 @@ pub struct MachineState {
 
 // ── Machine ───────────────────────────────────────────────────────────────────
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActiveCpu {
+    I8080,
+    Z80,
+}
+
 pub struct Machine {
     pub name: String,
     pub cpu: Cpu8080,
+    pub cpu_z80: Option<CpuZ80>,
+    active_cpu: ActiveCpu,
     pub bus: Bus,
     pub serial_idx: Option<usize>,
     pub fdc_idx: Option<usize>,
@@ -92,6 +135,8 @@ impl Machine {
         Machine {
             name: String::from("S-100 System"),
             cpu: Cpu8080::new(),
+            cpu_z80: None,
+            active_cpu: ActiveCpu::I8080,
             bus: Bus::new(),
             serial_idx: None,
             fdc_idx: None,
@@ -107,6 +152,8 @@ impl Machine {
 
         self.name = config.name.clone();
         self.cpu = Cpu8080::new();
+        self.cpu_z80 = None;
+        self.active_cpu = ActiveCpu::I8080;
         self.bus = Bus::new();
         self.serial_idx = None;
         self.fdc_idx = None;
@@ -119,6 +166,9 @@ impl Machine {
         if cpu_count == 0 {
             return Err("machine must have at least one cpu_ card".into());
         }
+        if cpu_count > 1 {
+            return Err("machine must have exactly one cpu_ card".into());
+        }
 
         // Sort slots by slot number
         let mut slots = config.slots;
@@ -126,8 +176,23 @@ impl Machine {
 
         for slot in &slots {
             match slot.card.as_str() {
+                "cpu_8080" => {
+                    self.active_cpu = ActiveCpu::I8080;
+                    let _speed_hz = slot.params.get("speed_hz")
+                        .and_then(Value::as_u64).unwrap_or(2_000_000);
+                }
+
+                "cpu_z80" => {
+                    let speed_hz = slot.params.get("speed_hz")
+                        .and_then(Value::as_u64).unwrap_or(4_000_000);
+                    let card = Z80Card::new(speed_hz);
+                    let _ = (card.speed_hz(), card.cycles_per_tick(), card.cycle_accumulator());
+                    self.cpu_z80 = Some(card.into_cpu());
+                    self.active_cpu = ActiveCpu::Z80;
+                }
+
                 c if c.starts_with("cpu_") => {
-                    // CPU is handled separately as self.cpu
+                    return Err(format!("unknown cpu card type: {c}"));
                 }
 
                 "boot_rom" => {
@@ -238,7 +303,7 @@ impl Machine {
         }
 
         if let Some(pc) = config.startup_pc {
-            self.cpu.pc = pc;
+            self.set_pc(pc);
         }
 
         Ok(())
@@ -269,7 +334,10 @@ impl Machine {
     pub fn step(&mut self, cycles: u32) -> u32 {
         let mut elapsed = 0u32;
         while elapsed < cycles {
-            elapsed += self.cpu.step(&mut self.bus);
+            elapsed += match self.active_cpu {
+                ActiveCpu::I8080 => self.cpu.step(&mut self.bus),
+                ActiveCpu::Z80 => self.cpu_z80.as_mut().map(|cpu| cpu.step(&mut self.bus)).unwrap_or_else(|| self.cpu.step(&mut self.bus)),
+            };
 
             // Capture IMSAI Programmed Output port (0xFF) — check the most recent trace entry
             if let Some(entry) = self.bus.trace.last() {
@@ -379,24 +447,85 @@ impl Machine {
 
     pub fn reset(&mut self) {
         self.cpu.reset();
+        if let Some(cpu) = self.cpu_z80.as_mut() {
+            cpu.reset();
+        }
         self.bus.reset();
     }
 
+    pub fn set_pc(&mut self, pc: u16) {
+        match self.active_cpu {
+            ActiveCpu::I8080 => self.cpu.pc = pc,
+            ActiveCpu::Z80 => {
+                if let Some(cpu) = self.cpu_z80.as_mut() {
+                    cpu.pc = pc;
+                } else {
+                    self.cpu.pc = pc;
+                }
+            }
+        }
+    }
+
     pub fn get_state(&self) -> MachineState {
-        let c = &self.cpu;
+        let cpu = match self.active_cpu {
+            ActiveCpu::I8080 => {
+                let c = &self.cpu;
+                CpuState {
+                    cpu_type: "8080".to_owned(),
+                    a: c.a, b: c.b, c: c.c, d: c.d, e: c.e, h: c.h, l: c.l,
+                    sp: c.sp, pc: c.pc,
+                    flags: FlagState {
+                        s: c.flags.s, z: c.flags.z, ac: c.flags.ac,
+                        p: c.flags.p, cy: c.flags.cy,
+                        h: None, pv: None, n: None,
+                    },
+                    halted: c.halted,
+                    interrupts_enabled: c.interrupts_enabled,
+                    cycles: c.cycles,
+                    ix: None,
+                    iy: None,
+                    i: None,
+                    r: None,
+                    iff2: None,
+                    interrupt_mode: None,
+                    alternate: None,
+                }
+            }
+            ActiveCpu::Z80 => {
+                let c = self.cpu_z80.as_ref().unwrap_or_else(|| unreachable!("active Z80 missing"));
+                CpuState {
+                    cpu_type: "Z80".to_owned(),
+                    a: c.a, b: c.b, c: c.c, d: c.d, e: c.e, h: c.h, l: c.l,
+                    sp: c.sp, pc: c.pc,
+                    flags: FlagState {
+                        s: c.f & 0x80 != 0,
+                        z: c.f & 0x40 != 0,
+                        ac: c.f & 0x10 != 0,
+                        p: c.f & 0x04 != 0,
+                        cy: c.f & 0x01 != 0,
+                        h: Some(c.f & 0x10 != 0),
+                        pv: Some(c.f & 0x04 != 0),
+                        n: Some(c.f & 0x02 != 0),
+                    },
+                    halted: c.halted,
+                    interrupts_enabled: c.iff1,
+                    cycles: c.cycles,
+                    ix: Some(c.ix),
+                    iy: Some(c.iy),
+                    i: Some(c.i),
+                    r: Some(c.r),
+                    iff2: Some(c.iff2),
+                    interrupt_mode: Some(c.interrupt_mode),
+                    alternate: Some(AltRegisterState {
+                        a: c.a_, f: c.f_, b: c.b_, c: c.c_, d: c.d_, e: c.e_, h: c.h_, l: c.l_,
+                    }),
+                }
+            }
+        };
+
         MachineState {
             name: self.name.clone(),
-            cpu: CpuState {
-                a: c.a, b: c.b, c: c.c, d: c.d, e: c.e, h: c.h, l: c.l,
-                sp: c.sp, pc: c.pc,
-                flags: FlagState {
-                    s: c.flags.s, z: c.flags.z, ac: c.flags.ac,
-                    p: c.flags.p, cy: c.flags.cy,
-                },
-                halted: c.halted,
-                interrupts_enabled: c.interrupts_enabled,
-                cycles: c.cycles,
-            },
+            cpu,
             cards: self.bus.cards.iter().map(|c| c.name().to_owned()).collect(),
             bus_cycles: self.bus.cycle_count,
             programmed_output: self.programmed_output,

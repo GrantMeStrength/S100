@@ -2,6 +2,7 @@ mod bus;
 mod card;
 mod cards;
 mod cpu;
+mod cpu_z80;
 mod machine;
 mod trace;
 
@@ -118,7 +119,7 @@ impl Emulator {
     /// Set the CPU program counter directly (used for ROM-based boot sequences).
     #[wasm_bindgen(js_name = setPC)]
     pub fn set_pc(&mut self, pc: u16) {
-        self.machine.cpu.pc = pc;
+        self.machine.set_pc(pc);
     }
 
     /// Render the Dazzler frame buffer to RGBA pixels.

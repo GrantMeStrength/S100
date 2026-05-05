@@ -56,13 +56,14 @@ export function getRomImage(id: string): RomImagePreset | undefined {
 export interface ConfigField {
   key: string;
   label: string;
-  /** hex = numeric as 0x…  |  romimage = ROM preset dropdown */
-  type: 'number' | 'hex' | 'file' | 'romimage';
+  /** hex = numeric as 0x…  |  romimage = ROM preset dropdown  |  select = fixed option list */
+  type: 'number' | 'hex' | 'file' | 'romimage' | 'select';
   min?: number;
   max?: number;
   step?: number;
   default?: unknown;
   accept?: string;   // file picker filter
+  options?: { label: string; value: number }[];  // for type='select'
 }
 
 export interface PortInfo {
@@ -87,6 +88,16 @@ export interface CardTypeInfo {
   /** Non-empty = stub; shows this message instead of config fields. */
   stub?: string;
 }
+
+// Clock-speed options shared by all CPU cards (value 0 = unlimited / fast-forward).
+const SPEED_OPTIONS = [
+  { label: '500 kHz  (Altair original)',  value:   500_000 },
+  { label: '1 MHz',                       value: 1_000_000 },
+  { label: '2 MHz  (IMSAI / standard)',   value: 2_000_000 },
+  { label: '4 MHz',                       value: 4_000_000 },
+  { label: '8 MHz',                       value: 8_000_000 },
+  { label: 'Unlimited  (fast-forward)',   value:         0 },
+];
 
 export const CARD_TYPES: CardTypeInfo[] = [
   {
@@ -114,7 +125,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     unique: true,
     defaultParams: { speed_hz: 2_000_000 },
     configFields: [
-      { key: 'speed_hz', label: 'Clock speed (Hz)', type: 'number', min: 1, max: 4_000_000, step: 1, default: 2_000_000 },
+      { key: 'speed_hz', label: 'Clock speed', type: 'select', options: SPEED_OPTIONS, default: 2_000_000 },
     ],
   },
   {
@@ -125,9 +136,10 @@ export const CARD_TYPES: CardTypeInfo[] = [
     accent: '#7d5af5',
     description: 'Zilog Z80 processor — fully compatible with the 8080 instruction set, plus extended instructions (IX/IY registers, CB/DD/ED/FD prefixes), two interrupt modes, and block operations.',
     unique: true,
-    stub: 'Z80 emulation is planned for a future release. The card will be added to the chassis but the CPU will fall back to 8080-compatible mode.',
-    defaultParams: {},
-    configFields: [],
+    defaultParams: { speed_hz: 2_000_000 },
+    configFields: [
+      { key: 'speed_hz', label: 'Clock speed', type: 'select', options: SPEED_OPTIONS, default: 2_000_000 },
+    ],
   },
   {
     id: 'ram',

@@ -218,75 +218,15 @@ export const ALTAIR_BOOT_ROM = new Uint8Array([
 
 // ── System presets ─────────────────────────────────────────────────────────────
 
-// IMSAI 8080 WD1793 bootstrap ROM — loaded at 0xFF00
-// Selects drive A (port 0x30), restores to track 0 via WD1793 Restore command (port 0x34),
-// reads track 0 sector 1 (128 bytes) to 0x0000 using DRQ polling on the data register,
-// then jumps to 0x0000 where the disk's own bootstrap takes over.
-// Toggle action at 0x0000 must set: C3 00 FF (JMP 0xFF00)
-export const IMSAI_BOOT_ROM = new Uint8Array([
-  // FF00: MVI A,1  ; select drive A (one-hot on port 0x30)
-  0x3E, 0x01,
-  // FF02: OUT 0x30
-  0xD3, 0x30,
-  // FF04: MVI A,0x0C  ; Restore command (head load, 6ms stepping)
-  0x3E, 0x0C,
-  // FF06: OUT 0x34  ; write command register
-  0xD3, 0x34,
-  // FF08: IN 0x34   ; read status  ← BUSY_WAIT
-  0xDB, 0x34,
-  // FF0A: ANI 1  ; test busy bit
-  0xE6, 0x01,
-  // FF0C: JNZ FF08  ; loop while busy
-  0xC2, 0x08, 0xFF,
-  // FF0F: MVI A,1   ; sector 1
-  0x3E, 0x01,
-  // FF11: OUT 0x36  ; sector register
-  0xD3, 0x36,
-  // FF13: MVI A,0x88 ; Read Sector command (head load + 15ms head settle)
-  0x3E, 0x88,
-  // FF15: OUT 0x34
-  0xD3, 0x34,
-  // FF17: LXI H,0x0000  ; destination address
-  0x21, 0x00, 0x00,
-  // FF1A: MVI C,128  ; byte counter
-  0x0E, 0x80,
-  // FF1C: IN 0x34   ; read status  ← DRQ_WAIT
-  0xDB, 0x34,
-  // FF1E: ANI 2  ; test DRQ bit
-  0xE6, 0x02,
-  // FF20: JZ FF1C  ; wait if DRQ not yet set
-  0xCA, 0x1C, 0xFF,
-  // FF23: IN 0x37  ; read data byte
-  0xDB, 0x37,
-  // FF25: MOV M,A ; store byte
-  0x77,
-  // FF26: INX H
-  0x23,
-  // FF27: DCR C
-  0x0D,
-  // FF28: JNZ FF1C  ; next byte
-  0xC2, 0x1C, 0xFF,
-  // FF2B: IN 0x34   ; wait for command complete  ← DONE_WAIT
-  0xDB, 0x34,
-  // FF2D: ANI 1  ; test busy bit
-  0xE6, 0x01,
-  // FF2F: JNZ FF2B
-  0xC2, 0x2B, 0xFF,
-  // FF32: JMP 0x0000  ; run disk bootstrap
-  0xC3, 0x00, 0x00,
-  // padding to 256 bytes
-  ...new Array(256 - 53).fill(0),
-]);
-
 export interface SystemPreset {
   id: string;
   label: string;
   machine: string;   // JSON
   /** If set, boots CP/M after loading (fetches disk image). */
   cpm?: boolean;
-  /** Boot ROM to inject at 0xFF00 when cpm is true. Defaults to ALTAIR_BOOT_ROM. */
+  /** Boot ROM to inject when cpm is true. Defaults to ALTAIR_BOOT_ROM. */
   cpmBootRom?: Uint8Array;
-  /** URL to a binary ROM image to load instead of cpmBootRom. Fetched at preset load time. */
+  /** URL to a binary ROM image to fetch and inject instead of cpmBootRom. */
   cpmBootRomUrl?: string;
   /** Address to inject the boot ROM at. Defaults to 0xFF00. */
   cpmBootRomAddr?: number;
@@ -294,8 +234,11 @@ export interface SystemPreset {
   cpmDiskUrl?: string;
   /** Display name for the auto-mounted disk. Defaults to 'AltairCPM22.dsk'. */
   cpmDiskLabel?: string;
-  /** Toggle action bytes at 0x0000 before run. Defaults to 'C3 00 FF' (JMP 0xFF00). */
-  cpmBootVector?: string;
+  /** Fetch a binary and load it into RAM at this address, then run from startupPc. */
+  binaryUrl?: string;
+  binaryLoadAddr?: number;
+  /** If set, override PC after loading (default 0x0000). */
+  startupPc?: number;
   /** If set, fetch this ROM binary and inject as data_base64 into the 'rom' card slot. */
   romUrl?: string;
 }
@@ -321,29 +264,22 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     cpm: true,
   },
   {
-    id: 'imsai_cpm',
-    label: 'IMSAI 8080 — 64K CP/M 2.2',
+    // MITS Altair BASIC Rev. 4.0 (Eight-K Version) — copyright 1976 by MITS Inc.
+    // Loads at 0x0000; uses 88-2SIO serial on ports 0x00/0x01.
+    // At startup: answer MEMORY SIZE? with <Enter> and TERMINAL WIDTH? with <Enter>.
+    id: 'altair_basic',
+    label: 'Altair 8800 — MITS BASIC 8K',
     machine: JSON.stringify({
-      name: 'IMSAI 8080 CP/M',
+      name: 'Altair 8800 BASIC',
       slots: [
-        { slot: 0, card: 'cpu_8080',    params: { speed_hz: 2_000_000 } },
-        { slot: 1, card: 'ram',         params: { base: 0, size: 65536 } },
-        // IMSAI SIO-2 (8251 USART) — status bit0=TxRDY, bit1=RxRDY, ports 0x02/0x03
-        { slot: 2, card: 'serial',      params: { data_port: 0x02, status_port: 0x03, status_rx_bit: 1, status_tx_bit: 0 } },
-        // Cromemco 4FDC / IMSAI FIF-SD — WD1771/WD1793 at 0x34–0x37, drive select at 0x30
-        // Standard IBM 3740 SSSD format: 77 tracks × 26 sectors × 128 bytes = 256,256 bytes flat
-        { slot: 3, card: 'fdc_wd1793',  params: { base_port: 0x34, drive_select_port: 0x30, tracks: 77, sectors: 26, sector_size: 128 } },
-      ],
-      // Toggle in JMP 0xFF00 at reset vector — same front-panel deposit as Altair
-      actions: [
-        { id: 'imsai-boot-vector', type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 FF' }] } },
+        { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
+        { slot: 1, card: 'ram',      params: { base: 0, size: 65536 } },
+        { slot: 2, card: 'serial',   params: { data_port: 0x00, status_port: 0x01 } },
       ],
     }),
-    cpm: true,
-    cpmBootRom: IMSAI_BOOT_ROM,
-    cpmDiskUrl: '/CPM22.dsk',
-    cpmDiskLabel: 'CPM22.dsk',
-    cpmBootVector: 'C3 00 FF',
+    binaryUrl: '/roms/8kbas.bin',
+    binaryLoadAddr: 0x0000,
+    startupPc: 0x0000,
   },
   {
     // IMSAI 8080 with the real MPU-A monitor ROM (bhall66/IMSAI-8080, MIT licence).
@@ -684,6 +620,14 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
           activeDiskUrl: diskUrl,
           activeDiskLabel: diskLabel,
         });
+      } else if (preset.binaryUrl) {
+        // Standalone binary (e.g. BASIC) — fetch and load directly into RAM.
+        const binResp = await fetch(preset.binaryUrl);
+        if (!binResp.ok) throw new Error(`Failed to fetch ${preset.binaryUrl}: ${binResp.status}`);
+        const binData = new Uint8Array(await binResp.arrayBuffer());
+        wasm.loadBinary(preset.binaryLoadAddr ?? 0x0000, binData);
+        if (preset.startupPc !== undefined) wasm.setPC(preset.startupPc);
+        set({ machineJson, mode: 'demo', activeBootRom: null, activeBootRomAddr: 0xFF00, activeDiskUrl: null, activeDiskLabel: null, running: true, actionsApplied: true });
       } else {
         set({ machineJson, mode: 'demo', activeBootRom: null, activeBootRomAddr: 0xFF00, activeDiskUrl: null, activeDiskLabel: null });
       }

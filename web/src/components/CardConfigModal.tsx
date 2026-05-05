@@ -400,6 +400,23 @@ function FieldRow({
 
   const num = typeof value === 'number' ? value : (field.default as number ?? 0);
 
+  if (field.type === 'select') {
+    return (
+      <div>
+        {label}
+        <select
+          value={num}
+          onChange={e => onChange(Number(e.target.value))}
+          style={{ ...inputStyle, cursor: 'pointer' }}
+        >
+          {(field.options ?? []).map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
   if (field.type === 'hex') {
     return (
       <div>

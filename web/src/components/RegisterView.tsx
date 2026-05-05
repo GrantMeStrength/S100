@@ -32,10 +32,11 @@ export function RegisterView() {
     return <div style={{ color: '#8b949e', fontSize: 12 }}>No CPU state</div>;
   }
   const { cpu } = state;
+  const isZ80 = cpu.ix !== undefined;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ color: '#8b949e', fontSize: 12 }}>CPU — 8080</span>
+      <span style={{ color: '#8b949e', fontSize: 12 }}>CPU — {isZ80 ? 'Z80' : '8080'}</span>
 
       <div style={{ display: 'flex', gap: 16 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -52,7 +53,9 @@ export function RegisterView() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           <Reg label="PC" value={cpu.pc} />
           <Reg label="SP" value={cpu.sp} />
-          <Reg label="CY" value={cpu.cycles} hex={false} />
+          {isZ80 && <Reg label="IX" value={cpu.ix!} />}
+          {isZ80 && <Reg label="IY" value={cpu.iy!} />}
+          {!isZ80 && <Reg label="CY" value={cpu.cycles} hex={false} />}
         </div>
       </div>
 

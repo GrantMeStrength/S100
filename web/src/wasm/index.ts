@@ -54,6 +54,9 @@ export interface CpuState {
   halted: boolean;
   interrupts_enabled: boolean;
   cycles: number;
+  // Z80-only (undefined when running 8080)
+  ix?: number;
+  iy?: number;
 }
 
 export interface MachineState {
