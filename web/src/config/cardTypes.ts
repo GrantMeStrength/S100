@@ -171,7 +171,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
   },
   {
     id: 'dcdd_88',
-    label: 'MITS 88-DCDD (Disk Controller)',
+    label: 'MITS 88-DCDD',
     shortLabel: 'DCDD',
     color: '#2e1a0a',
     accent: '#d4802a',
@@ -181,7 +181,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
   },
   {
     id: 'sio_88_2sio',
-    label: 'MITS 88-2SIO (Serial I/O)',
+    label: 'MITS 88-2SIO',
     shortLabel: '2SIO',
     color: '#0d2030',
     accent: '#3a9fd4',
