@@ -140,6 +140,7 @@ export const DEFAULT_MACHINE = JSON.stringify({
 
 export const ALTAIR_CPM_MACHINE = JSON.stringify({
   name: 'Altair 8800 CP/M 2.2',
+  startup_pc: 0xFF00,
   slots: [
     { slot: 0, card: 'cpu_8080',    params: { speed_hz: 2_000_000 } },
     { slot: 1, card: 'ram',         params: { base: 0, size: 65536 } },
@@ -415,6 +416,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       wasm.loadMachine(ALTAIR_CPM_MACHINE);
 
       // Load MITS 88-DCDD bootstrap ROM into RAM at 0xFF00
+      // startup_pc in the machine config sets CPU PC to 0xFF00 on loadMachine
       wasm.loadBinary(0xFF00, ALTAIR_BOOT_ROM);
 
       // Fetch and insert Altair CP/M 2.2 disk image as drive A
@@ -422,9 +424,6 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       if (!resp.ok) throw new Error(`Failed to fetch AltairCPM22.dsk: ${resp.status}`);
       const buf = await resp.arrayBuffer();
       wasm.insertDisk(0, new Uint8Array(buf));
-
-      // Point CPU at the boot ROM (no reset — RAM must retain loaded ROM)
-      wasm.setPC(0xFF00);
 
       set({
         machineJson: ALTAIR_CPM_MACHINE,
@@ -491,7 +490,6 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
         if (!resp.ok) throw new Error(`Failed to fetch AltairCPM22.dsk: ${resp.status}`);
         const buf = await resp.arrayBuffer();
         wasm.insertDisk(0, new Uint8Array(buf));
-        wasm.setPC(0xFF00);
         set({ machineJson, mode: 'cpm', diskStatus: ['AltairCPM22.dsk', null, null, null] });
       } else {
         set({ machineJson, mode: 'demo' });

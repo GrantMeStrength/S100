@@ -27,6 +27,9 @@ pub struct SlotConfig {
 pub struct MachineConfig {
     pub name: String,
     pub slots: Vec<SlotConfig>,
+    /// Optional startup program counter. If set, the CPU begins execution here
+    /// instead of 0x0000. Useful for machines that load a boot ROM into RAM.
+    pub startup_pc: Option<u16>,
 }
 
 // ── CPU state snapshot (for getState) ────────────────────────────────────────
@@ -188,6 +191,10 @@ impl Machine {
                     return Err(format!("unknown card type: {other}"));
                 }
             }
+        }
+
+        if let Some(pc) = config.startup_pc {
+            self.cpu.pc = pc;
         }
 
         Ok(())
