@@ -99,8 +99,9 @@ export default function App() {
             disabled={running}
             style={{
               background: '#21262d', border: '1px solid #30363d', borderRadius: 4,
-              color: '#c9d1d9', fontSize: 11, fontFamily: 'monospace',
-              padding: '3px 6px', cursor: 'pointer', maxWidth: 220,
+              color: running ? '#484f58' : '#c9d1d9', fontSize: 11, fontFamily: 'monospace',
+              padding: '3px 6px', cursor: running ? 'not-allowed' : 'pointer', maxWidth: 220,
+              opacity: running ? 0.5 : 1,
             }}
           >
             {SYSTEM_PRESETS.map(p => (
@@ -110,7 +111,7 @@ export default function App() {
           <CtrlBtn
             onClick={() => loadPreset(selectedPreset)}
             color="#79c0ff"
-            disabled={!wasmReady}
+            disabled={!wasmReady || running}
           >
             ⚙ Load System
           </CtrlBtn>
