@@ -22,6 +22,14 @@ export const ROM_IMAGES: RomImagePreset[] = [
     description: 'MITS 8K BASIC v3.2 for the Altair 8800. Loads at 0xC000–0xDFFF; a copy loop in RAM transfers it to 0x0000 on boot. Uses 88-SIO ports (data 0x01, status 0x00) with 7-bit output.',
   },
   {
+    id: 'imsai_basic8k',
+    label: 'IMSAI 8K BASIC v1.4',
+    url: '/roms/imsai_basic8k.bin',
+    base: 0x0000,
+    size: 8192,
+    description: 'IMSAI 8K BASIC v1.4. ROM at 0x0000–0x1FFF; CPU starts here directly. Uses 8251 USART: data port 0x02, status port 0x03 (bit0=TxRDY, bit1=RxRDY).',
+  },
+  {
     id: 'memon80',
     label: 'Memon/80 v3.06 (M. Eberhard / JAIR)',
     url: '/roms/memon80.bin',

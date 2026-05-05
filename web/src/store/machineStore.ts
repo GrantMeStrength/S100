@@ -365,6 +365,26 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     cpmDiskLabel: 'IMSAICPM60_MBASIC.dsk',
   },
   {
+    // IMSAI 8K BASIC v1.4 — standalone ROM BASIC for the IMSAI 8080.
+    // ROM loads at 0x0000; CPU executes from there on reset (no toggle needed).
+    // Uses 8251 USART: data port 0x02, status port 0x03 (bit0=TxRDY, bit1=RxRDY).
+    // seven_bit strips bit 7 from TX bytes — IMSAI BASIC sets bit 7 on keyword initials.
+    // At startup: MEMORY SIZE? → Enter, TERMINAL WIDTH? → Enter
+    id: 'imsai_basic8k',
+    label: 'IMSAI 8080 — 8K BASIC v1.4',
+    romUrl: '/roms/imsai_basic8k.bin',
+    machine: JSON.stringify({
+      name: 'IMSAI 8K BASIC',
+      slots: [
+        { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
+        { slot: 1, card: 'rom',    params: { base: 0x0000, size: 8192, rom_image: 'imsai_basic8k' } },
+        { slot: 2, card: 'ram',    params: { base: 0x2000, size: 57344 } },
+        { slot: 3, card: 'serial', params: { data_port: 0x02, status_port: 0x03, status_rx_bit: 1, status_tx_bit: 0, seven_bit: true } },
+      ],
+      actions: [],
+    }),
+  },
+  {
     id: 'memon80',
     label: 'Memon/80 v3.06 Monitor (JAIR)',
     romUrl: '/roms/memon80.bin',
