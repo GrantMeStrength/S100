@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import * as wasm from '../wasm';
+import * as wasm from '../wasm/index';
 import { useMachineStore } from '../store/machineStore';
 
 const ROWS     = 16;   // rows of 16 bytes = 256 bytes visible

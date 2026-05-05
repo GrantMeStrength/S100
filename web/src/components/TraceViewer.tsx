@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useMachineStore } from '../store/machineStore';
-import type { TraceEntry } from '../wasm';
+import type { TraceEntry } from '../wasm/index';
 
 function opBadge(op: TraceEntry['op']) {
   const map: Record<TraceEntry['op'], [string, string]> = {

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useMachineStore } from '../store/machineStore';
-import * as wasm from '../wasm';
+import * as wasm from '../wasm/index';
 
 const DISPLAY_SIZE = 256; // canvas CSS pixels (always square)
 

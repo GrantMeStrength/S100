@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import type { MachineState, TraceEntry } from '../wasm';
-import * as wasm from '../wasm';
+import type { MachineState, TraceEntry } from '../wasm/index';
+import * as wasm from '../wasm/index';
 import { buildBootVector, buildBios, buildCcp } from '../utils/cpm';
 
 // ── Slot / config types ────────────────────────────────────────────────────────
