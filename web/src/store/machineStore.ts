@@ -403,6 +403,8 @@ export interface MachineStore {
   removeCard: (slotIndex: number) => void;
   moveCard: (fromSlot: number, toSlot: number) => void;
   updateCardParams: (slotIndex: number, params: Record<string, unknown>) => void;
+  /** Internal: reload machine JSON while preserving disks + CP/M boot state. */
+  _reloadWithStatePreservation: (newJson: string, newSlots: SlotEntry[]) => void;
 
   // Action (Toggle) management
   addAction: () => void;
@@ -653,6 +655,46 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
 
   // ── Card config actions ──────────────────────────────────────────────────────
 
+  // Helper: reload the machine with a new config JSON while preserving disks
+  // and CP/M boot state if the machine was in CP/M mode.
+  // Returns the Zustand state diff to apply.
+  // NOTE: call wasm.loadMachine(json) BEFORE this helper.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  _reloadWithStatePreservation: (newJson: string, newSlots: SlotEntry[]) => {
+    const state = get();
+    const previousMode = state.mode;
+    const previousDiskStatus = [...state.diskStatus];
+
+    // Save disk images before machine is rebuilt (they live in WASM)
+    const savedDisks: (Uint8Array | null)[] = [0, 1, 2, 3].map(i => {
+      try { const d = wasm.getDiskData(i); return d.length > 0 ? d : null; }
+      catch { return null; }
+    });
+
+    try { wasm.loadMachine(newJson); } catch (e) { set({ error: String(e) }); return; }
+
+    // Re-insert saved disk images
+    savedDisks.forEach((disk, i) => { if (disk) wasm.insertDisk(i, disk); });
+
+    // Restore CP/M boot state (same as cold reboot)
+    const newMode = previousMode === 'cpm' ? 'cpm' : 'demo';
+    if (previousMode === 'cpm') {
+      wasm.loadBinary(0xFF00, ALTAIR_BOOT_ROM);
+      for (const action of state.actions) {
+        if (action.type === 'toggle') applyToggleEntries(action.params.entries);
+      }
+    }
+
+    set({
+      slots: newSlots, machineJson: newJson,
+      running: previousMode === 'cpm',
+      mode: newMode,
+      actionsApplied: previousMode === 'cpm',
+      terminalOutput: '', traceEntries: [], traceCursor: 0,
+      diskStatus: previousMode === 'cpm' ? previousDiskStatus : [null, null, null, null],
+    });
+  },
+
   addCard: (slotIndex, cardId, params = {}) => {
     const state = get();
     const newSlots: SlotEntry[] = [
@@ -660,18 +702,14 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       { slot: slotIndex, card: cardId, params },
     ].sort((a, b) => a.slot - b.slot);
     const json = configToJson(state.machineName, newSlots, state.actions);
-    try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
-    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo', actionsApplied: false,
-          terminalOutput: '', traceEntries: [], traceCursor: 0, diskStatus: [null,null,null,null] });
+    get()._reloadWithStatePreservation(json, newSlots);
   },
 
   removeCard: (slotIndex) => {
     const state = get();
     const newSlots = state.slots.filter(s => s.slot !== slotIndex);
     const json = configToJson(state.machineName, newSlots, state.actions);
-    try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
-    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo', actionsApplied: false,
-          terminalOutput: '', traceEntries: [], traceCursor: 0, diskStatus: [null,null,null,null] });
+    get()._reloadWithStatePreservation(json, newSlots);
   },
 
   moveCard: (fromSlot, toSlot) => {
@@ -682,18 +720,14 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       return s;
     }).sort((a, b) => a.slot - b.slot);
     const json = configToJson(state.machineName, newSlots, state.actions);
-    try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
-    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo', actionsApplied: false,
-          terminalOutput: '', traceEntries: [], traceCursor: 0, diskStatus: [null,null,null,null] });
+    get()._reloadWithStatePreservation(json, newSlots);
   },
 
   updateCardParams: (slotIndex, params) => {
     const state = get();
     const newSlots = state.slots.map(s => s.slot === slotIndex ? { ...s, params } : s);
     const json = configToJson(state.machineName, newSlots, state.actions);
-    try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
-    set({ slots: newSlots, machineJson: json, running: false, mode: 'demo', actionsApplied: false,
-          terminalOutput: '', traceEntries: [], traceCursor: 0, diskStatus: [null,null,null,null] });
+    get()._reloadWithStatePreservation(json, newSlots);
   },
 
   // ── Action (Toggle) management ───────────────────────────────────────────────
