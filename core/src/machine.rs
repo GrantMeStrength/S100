@@ -722,3 +722,17 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, &'static str> {
     Ok(out)
 }
 
+
+#[cfg(test)]
+mod basic_test {
+    use super::*;
+    #[test]
+    fn test_basic_load_config() {
+        let json = r#"{"name":"Altair 8800 BASIC","slots":[{"slot":0,"card":"cpu_8080","params":{"speed_hz":2000000}},{"slot":1,"card":"ram","params":{"base":0,"size":65536}},{"slot":2,"card":"serial","params":{"data_port":0,"status_port":1}}]}"#;
+        let mut m = Machine::new();
+        m.load_config(json).expect("BASIC config should load without error");
+        // Run a few steps to confirm it doesn't panic
+        m.step(1000);
+        println!("PC after 1000 cycles: {:04X}", m.cpu.pc);
+    }
+}

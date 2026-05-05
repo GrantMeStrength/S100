@@ -1,9 +1,11 @@
 import init, { Emulator } from './pkg/s100_core.js';
 
 let emulator: Emulator | null = null;
+let wasmModuleAlive = false;
 
 export async function initWasm(): Promise<void> {
   await init();
+  wasmModuleAlive = true;
   emulator = new Emulator();
 }
 
@@ -12,22 +14,31 @@ export function getEmulator(): Emulator {
   return emulator;
 }
 
-/** Recreate the Emulator after a WASM RuntimeError (corrupted allocator). */
-function recreateEmulator(): void {
-  try { emulator?.free(); } catch { /* ignore */ }
+/**
+ * After a WASM RuntimeError the entire module instance is terminated — even
+ * `new Emulator()` throws.  We must call `init()` again to get a fresh module,
+ * then create a new Emulator.  Returns a promise so callers can await recovery.
+ */
+async function reinitWasm(): Promise<void> {
+  wasmModuleAlive = false;
+  try { emulator?.free(); } catch { /* already dead */ }
+  emulator = null;
+  await init();
+  wasmModuleAlive = true;
   emulator = new Emulator();
 }
 
 // ── Typed wrappers ─────────────────────────────────────────────────────────────
 
-export function loadMachine(json: string): void {
+export async function loadMachine(json: string): Promise<void> {
+  if (!wasmModuleAlive) await reinitWasm();
   try {
     getEmulator().loadMachine(json);
   } catch (e) {
-    // After a WASM panic the linear-memory allocator is corrupted; recreate.
     if (e && typeof e === 'object' && 'name' in e && (e as Error).name === 'RuntimeError') {
-      recreateEmulator();
-      getEmulator().loadMachine(json); // retry once
+      // Module trapped — reinitialize the WASM module then retry once.
+      await reinitWasm();
+      getEmulator().loadMachine(json);
     } else {
       throw e;
     }

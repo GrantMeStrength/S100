@@ -91,12 +91,12 @@ export interface CardTypeInfo {
 
 // Clock-speed options shared by all CPU cards (value 0 = unlimited / fast-forward).
 const SPEED_OPTIONS = [
-  { label: '500 kHz  (Altair original)',  value:   500_000 },
-  { label: '1 MHz',                       value: 1_000_000 },
-  { label: '2 MHz  (IMSAI / standard)',   value: 2_000_000 },
-  { label: '4 MHz',                       value: 4_000_000 },
-  { label: '8 MHz',                       value: 8_000_000 },
-  { label: 'Unlimited  (fast-forward)',   value:         0 },
+  { label: '500 kHz',                      value:   500_000 },
+  { label: '1 MHz',                        value: 1_000_000 },
+  { label: '2 MHz  (Altair / IMSAI)',      value: 2_000_000 },
+  { label: '4 MHz',                        value: 4_000_000 },
+  { label: '8 MHz',                        value: 8_000_000 },
+  { label: 'Unlimited  (fast-forward)',    value:         0 },
 ];
 
 export const CARD_TYPES: CardTypeInfo[] = [

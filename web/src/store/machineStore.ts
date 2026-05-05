@@ -250,7 +250,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     machine: JSON.stringify({
       name: 'Altair 8800 (8K)',
       slots: [
-        { slot: 0, card: 'cpu_8080', params: { speed_hz: 500_000 } },
+        { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
         { slot: 1, card: 'rom',  params: { base: 0x0000, data_hex: buildDemoRom() } },
         { slot: 2, card: 'ram',  params: { base: 0x0000, size: 8192 } },
         { slot: 3, card: 'serial', params: { data_port: 0, status_port: 1 } },
@@ -265,7 +265,8 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
   },
   {
     // MITS Altair BASIC Rev. 4.0 (Eight-K Version) — copyright 1976 by MITS Inc.
-    // Loads at 0x0000; uses 88-2SIO serial on ports 0x00/0x01.
+    // Loads at 0x0000; uses 88-SIO: status on port 0x00, data on port 0x01.
+    // 88-SIO RX status is active-low: bit 0 CLEAR = data ready (status_rx_invert).
     // At startup: answer MEMORY SIZE? with <Enter> and TERMINAL WIDTH? with <Enter>.
     id: 'altair_basic',
     label: 'Altair 8800 — MITS BASIC 8K',
@@ -274,7 +275,8 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
       slots: [
         { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
         { slot: 1, card: 'ram',      params: { base: 0, size: 65536 } },
-        { slot: 2, card: 'serial',   params: { data_port: 0x00, status_port: 0x01 } },
+        // 88-SIO: status=0x00 (bit0=rx-NOT-ready), data=0x01
+        { slot: 2, card: 'serial',   params: { data_port: 0x01, status_port: 0x00, status_rx_invert: true } },
       ],
     }),
     binaryUrl: '/roms/8kbas.bin',
@@ -492,7 +494,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   initWasm: async () => {
     try {
       await wasm.initWasm();
-      wasm.loadMachine(get().machineJson);
+      await wasm.loadMachine(get().machineJson);
       set({ wasmReady: true, error: null, actionsApplied: false });
     } catch (e) {
       set({ error: String(e) });
@@ -500,14 +502,11 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   },
 
   loadMachine: (json) => {
-    try {
-      wasm.loadMachine(json);
+    wasm.loadMachine(json).then(() => {
       const { name, slots, actions } = parseMachineConfig(json);
       set({ machineJson: json, slots, machineName: name, actions, actionsApplied: false,
             error: null, terminalOutput: '', running: false, mode: 'demo' });
-    } catch (e) {
-      set({ error: String(e) });
-    }
+    }).catch(e => set({ error: String(e) }));
   },
 
   bootCpm: async () => {
@@ -515,7 +514,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       set({ running: false });
 
       // Load Altair hardware config (64K RAM + 88-2SIO + 88-DCDD)
-      wasm.loadMachine(ALTAIR_CPM_MACHINE);
+      await wasm.loadMachine(ALTAIR_CPM_MACHINE);
 
       // Load MITS 88-DCDD bootstrap ROM into RAM at 0xFF00
       wasm.loadBinary(0xFF00, ALTAIR_BOOT_ROM);
@@ -594,7 +593,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
         machineJson = JSON.stringify(obj);
       }
 
-      wasm.loadMachine(machineJson);
+      await wasm.loadMachine(machineJson);
 
       if (preset.cpm) {
         // Resolve boot ROM — from URL, inline bytes, or Altair default
