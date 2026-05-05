@@ -770,14 +770,15 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   // ── Card config actions ──────────────────────────────────────────────────────
 
   // Helper: reload the machine with a new config JSON while preserving disks
-  // and CP/M boot state if the machine was in CP/M mode.
-  // Returns the Zustand state diff to apply.
-  // NOTE: call wasm.loadMachine(json) BEFORE this helper.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // and CP/M (or BASIC) boot state.  Uses the direct synchronous WASM call so
+  // errors are caught reliably (the async wrapper cannot be caught without await).
   _reloadWithStatePreservation: (newJson: string, newSlots: SlotEntry[]) => {
     const state = get();
     const previousMode = state.mode;
     const previousDiskStatus = [...state.diskStatus];
+
+    // Stop the RAF loop before touching WASM to eliminate any interleave.
+    set({ running: false });
 
     // Save disk images before machine is rebuilt (they live in WASM)
     const savedDisks: (Uint8Array | null)[] = [0, 1, 2, 3].map(i => {
@@ -785,25 +786,33 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       catch { return null; }
     });
 
-    try { wasm.loadMachine(newJson); } catch (e) { set({ error: String(e) }); return; }
+    // Use the direct synchronous WASM call so errors throw synchronously
+    // and are caught here, rather than becoming silent Promise rejections.
+    try {
+      wasm.getEmulator().loadMachine(newJson);
+    } catch (e) {
+      set({ error: String(e), running: false });
+      return;
+    }
 
     // Re-insert saved disk images
     savedDisks.forEach((disk, i) => { if (disk) wasm.insertDisk(i, disk); });
 
-    // Restore CP/M boot state (same as cold reboot)
+    // Restore boot state for CP/M or demo machines with toggle actions
     const newMode = previousMode === 'cpm' ? 'cpm' : 'demo';
     if (previousMode === 'cpm') {
       wasm.loadBinary(state.activeBootRomAddr ?? 0xFF00, state.activeBootRom ?? ALTAIR_BOOT_ROM);
-      for (const action of state.actions) {
-        if (action.type === 'toggle') applyToggleEntries(action.params.entries);
-      }
+    }
+    // Re-apply toggle actions for any mode (boot vectors and copy loops live in RAM)
+    for (const action of state.actions) {
+      if (action.type === 'toggle') applyToggleEntries(action.params.entries);
     }
 
     set({
       slots: newSlots, machineJson: newJson,
-      running: previousMode === 'cpm',
+      running: previousMode === 'cpm' || (previousMode === 'demo' && state.actionsApplied),
       mode: newMode,
-      actionsApplied: previousMode === 'cpm',
+      actionsApplied: previousMode === 'cpm' || (previousMode === 'demo' && state.actionsApplied),
       terminalOutput: '', traceEntries: [], traceCursor: 0,
       diskStatus: previousMode === 'cpm' ? previousDiskStatus : [null, null, null, null],
     });
