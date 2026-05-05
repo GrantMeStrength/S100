@@ -28,7 +28,10 @@ export function Terminal() {
 
   // Auto-focus when the machine starts running
   useEffect(() => {
-    if (running) canvasRef.current?.focus();
+    if (!running) return;
+    // Defer to let the Run button release focus first
+    const id = setTimeout(() => canvasRef.current?.focus(), 0);
+    return () => clearTimeout(id);
   }, [running]);
 
   // Simple line-buffer rendering (no full VT100 state machine for MVP)
