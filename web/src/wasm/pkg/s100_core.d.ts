@@ -52,6 +52,10 @@ export class Emulator {
      */
     sendSerialString(s: string): void;
     /**
+     * Set the CPU program counter directly (used for ROM-based boot sequences).
+     */
+    setPC(pc: number): void;
+    /**
      * Run for at least `cycles` T-states. Returns actual cycles run.
      */
     step(cycles: number): number;
@@ -82,6 +86,7 @@ export interface InitOutput {
     readonly emulator_reset: (a: number) => void;
     readonly emulator_sendSerialInput: (a: number, b: number) => void;
     readonly emulator_sendSerialString: (a: number, b: number, c: number) => void;
+    readonly emulator_setPC: (a: number, b: number) => void;
     readonly emulator_step: (a: number, b: number) => number;
     readonly emulator_traceTotal: (a: number) => bigint;
     readonly emulator_writeMemory: (a: number, b: number, c: number) => void;

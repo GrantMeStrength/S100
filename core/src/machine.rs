@@ -1,8 +1,16 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::bus::{Bus, BusInterface};
-use crate::cards::{boot_rom::BootRomCard, fdc::FloppyController, ram::RamCard, rom::RomCard, serial::SerialCard};
+use crate::bus::Bus;
+use crate::cards::{
+    boot_rom::BootRomCard,
+    dcdd::Dcdd88Card,
+    fdc::FloppyController,
+    ram::RamCard,
+    rom::RomCard,
+    serial::SerialCard,
+    sio_88::Sio88Card,
+};
 use crate::cpu::Cpu8080;
 
 // ── Machine configuration types ───────────────────────────────────────────────
@@ -59,12 +67,6 @@ pub struct MachineState {
     pub programmed_output: u8,
 }
 
-// ── CP/M disk geometry constants (standard 8-inch) ───────────────────────────
-const CPM_BLOCK_SIZE: usize = 1024;
-const CPM_DIR_ENTRIES: usize = 64;
-/// Byte offset where block 0 / directory begins (track 2 × 26 sectors × 128 bytes).
-const CPM_DATA_START: usize = 2 * 26 * 128; // 6656
-
 // ── Machine ───────────────────────────────────────────────────────────────────
 
 pub struct Machine {
@@ -73,14 +75,6 @@ pub struct Machine {
     pub bus: Bus,
     pub serial_idx: Option<usize>,
     pub fdc_idx: Option<usize>,
-    input_line_buf: Vec<u8>,
-    input_line_ready: bool,
-    bdos_dma_addr: u16,
-    /// Directory scan position (entry index 0–63).
-    dir_scan_idx: usize,
-    dir_scan_drive: usize,
-    /// 11-byte name+ext wildcard pattern ('?' = any).
-    dir_scan_pattern: [u8; 11],
     /// IMSAI Programmed Output latch — captures the last byte written to port 0xFF.
     pub programmed_output: u8,
 }
@@ -93,12 +87,6 @@ impl Machine {
             bus: Bus::new(),
             serial_idx: None,
             fdc_idx: None,
-            input_line_buf: Vec::new(),
-            input_line_ready: false,
-            bdos_dma_addr: 0x0080,
-            dir_scan_idx: 0,
-            dir_scan_drive: 0,
-            dir_scan_pattern: [b'?'; 11],
             programmed_output: 0,
         }
     }
@@ -112,12 +100,6 @@ impl Machine {
         self.bus = Bus::new();
         self.serial_idx = None;
         self.fdc_idx = None;
-        self.input_line_buf.clear();
-        self.input_line_ready = false;
-        self.bdos_dma_addr = 0x0080;
-        self.dir_scan_idx = 0;
-        self.dir_scan_drive = 0;
-        self.dir_scan_pattern = [b'?'; 11];
         self.programmed_output = 0;
 
         // Validate: exactly one CPU card
@@ -192,6 +174,16 @@ impl Machine {
                     self.bus.add_card(Box::new(FloppyController::new("fdc")));
                 }
 
+                "dcdd_88" => {
+                    self.fdc_idx = Some(self.bus.cards.len());
+                    self.bus.add_card(Box::new(Dcdd88Card::new("88-DCDD")));
+                }
+
+                "sio_88_2sio" => {
+                    self.serial_idx = Some(self.bus.cards.len());
+                    self.bus.add_card(Box::new(Sio88Card::new("88-2SIO")));
+                }
+
                 other => {
                     return Err(format!("unknown card type: {other}"));
                 }
@@ -235,21 +227,6 @@ impl Machine {
                 }
             }
 
-            // Handle BDOS trap (CALL 0x0005 intercepted by CPU)
-            if self.cpu.bdos_pending {
-                self.cpu.bdos_pending = false;
-                let call_pc = self.cpu.bdos_call_pc;
-                let handled = self.handle_bdos();
-                if !handled {
-                    // Not ready (waiting for input) — re-execute the CALL next tick
-                    self.cpu.pc = call_pc;
-                    break; // Yield to avoid busy-spinning burning the whole frame budget
-                }
-            }
-
-            // Handle pending FDC DMA transfers
-            self.handle_fdc_dma();
-
             self.bus.step_cards();
         }
         elapsed
@@ -258,9 +235,6 @@ impl Machine {
     pub fn reset(&mut self) {
         self.cpu.reset();
         self.bus.reset();
-        self.input_line_buf.clear();
-        self.input_line_ready = false;
-        self.bdos_dma_addr = 0x0080;
     }
 
     pub fn get_state(&self) -> MachineState {
@@ -307,6 +281,9 @@ impl Machine {
                 if let Some(serial) = card.as_any_mut().downcast_mut::<SerialCard>() {
                     return serial.drain_tx();
                 }
+                if let Some(sio) = card.as_any_mut().downcast_mut::<Sio88Card>() {
+                    return sio.drain_tx();
+                }
             }
         }
         vec![]
@@ -317,6 +294,10 @@ impl Machine {
             if let Some(card) = self.bus.cards.get_mut(idx) {
                 if let Some(serial) = card.as_any_mut().downcast_mut::<SerialCard>() {
                     serial.push_rx(byte);
+                    return;
+                }
+                if let Some(sio) = card.as_any_mut().downcast_mut::<Sio88Card>() {
+                    sio.push_rx(byte);
                 }
             }
         }
@@ -329,6 +310,10 @@ impl Machine {
             if let Some(card) = self.bus.cards.get_mut(idx) {
                 if let Some(fdc) = card.as_any_mut().downcast_mut::<FloppyController>() {
                     fdc.insert_disk(drive as usize, data);
+                    return;
+                }
+                if let Some(dcdd) = card.as_any_mut().downcast_mut::<Dcdd88Card>() {
+                    dcdd.insert_disk(drive as usize, data);
                 }
             }
         }
@@ -340,664 +325,14 @@ impl Machine {
                 if let Some(fdc) = card.as_any().downcast_ref::<FloppyController>() {
                     return fdc.drives[drive as usize & 3].clone();
                 }
+                if let Some(dcdd) = card.as_any().downcast_ref::<Dcdd88Card>() {
+                    return dcdd.drives[drive as usize & 3].clone();
+                }
             }
         }
         None
     }
 
-    // ── FDC DMA handler ────────────────────────────────────────────────────
-
-    fn handle_fdc_dma(&mut self) {
-        let fdc_idx = match self.fdc_idx { Some(i) => i, None => return };
-
-        // Step 1: Take pending DMA info from FDC (short borrow, then release)
-        let pending = {
-            if let Some(fdc) = self.bus.cards.get_mut(fdc_idx)
-                .and_then(|c| c.as_any_mut().downcast_mut::<FloppyController>())
-            {
-                fdc.pending_dma.take()
-            } else {
-                None
-            }
-        };
-
-        let Some(dma) = pending else { return };
-
-        if dma.is_read {
-            // Copy sector data from FDC buffer to bus memory at DMA address
-            for (i, &byte) in dma.data.iter().enumerate() {
-                self.bus.mem_write(dma.addr.wrapping_add(i as u16), byte);
-            }
-        } else {
-            // Step 2a: Read 128 bytes from bus memory at DMA address
-            let mut data = [0u8; 128];
-            for i in 0..128u16 {
-                data[i as usize] = self.bus.mem_read(dma.addr.wrapping_add(i));
-            }
-            // Step 2b: Write to disk image in FDC (fresh borrow)
-            if let Some(fdc) = self.bus.cards.get_mut(fdc_idx)
-                .and_then(|c| c.as_any_mut().downcast_mut::<FloppyController>())
-            {
-                fdc.do_write(&data);
-            }
-        }
-    }
-
-    // ── BDOS trap handler ──────────────────────────────────────────────────
-
-    /// Handle a BDOS call intercepted at CALL 0x0005.
-    /// Returns `true` if the call was completed (CPU can continue),
-    /// `false` if the call must wait (e.g. no console input available).
-    fn handle_bdos(&mut self) -> bool {
-        let function = self.cpu.c;
-        let param_e  = self.cpu.e;
-        let param_de = (self.cpu.d as u16) << 8 | self.cpu.e as u16;
-
-        #[cfg(test)]
-        eprintln!("BDOS fn={} DE=0x{:04X} (from PC=0x{:04X})", function, param_de, self.cpu.bdos_call_pc);
-
-        match function {
-            // ── 0: System Reset (warm boot) ─────────────────────────────
-            0 => {
-                self.cpu.pc = 0xFA00;
-                true
-            }
-
-            // ── 1: Console Input ────────────────────────────────────────
-            1 => {
-                // Try to get next character from serial RX
-                self.process_console_input();
-                if let Some(ch) = self.take_input_char() {
-                    self.serial_out(ch); // echo
-                    self.cpu.a = ch;
-                    true
-                } else {
-                    false // Wait for input
-                }
-            }
-
-            // ── 2: Console Output ────────────────────────────────────────
-            2 => {
-                self.serial_out(param_e);
-                true
-            }
-
-            // ── 5: Printer Output (redirect to console) ──────────────────
-            5 => {
-                self.serial_out(param_e);
-                true
-            }
-
-            // ── 6: Direct Console I/O ────────────────────────────────────
-            6 => {
-                if param_e == 0xFF {
-                    // Return status
-                    self.process_console_input();
-                    self.cpu.a = if self.has_input() { 0xFF } else { 0x00 };
-                    true
-                } else if param_e == 0xFE {
-                    // Get char without echo
-                    self.process_console_input();
-                    if let Some(ch) = self.take_input_char() {
-                        self.cpu.a = ch;
-                        true
-                    } else {
-                        self.cpu.a = 0;
-                        true // Returns 0 immediately, no blocking
-                    }
-                } else {
-                    // Output char
-                    self.serial_out(param_e);
-                    true
-                }
-            }
-
-            // ── 9: Print String ──────────────────────────────────────────
-            9 => {
-                let mut addr = param_de;
-                for _ in 0..65536u32 {
-                    let ch = self.bus.mem_read(addr);
-                    if ch == b'$' { break; }
-                    self.serial_out(ch);
-                    addr = addr.wrapping_add(1);
-                }
-                true
-            }
-
-            // ── 10: Read Console Buffer ──────────────────────────────────
-            10 => {
-                // Process any incoming characters into the line buffer
-                self.process_console_input();
-
-                if self.input_line_ready {
-                    // Write result: [max_len, actual_len, chars...]
-                    let max_len = self.bus.mem_read(param_de) as usize;
-                    let line = core::mem::take(&mut self.input_line_buf);
-                    self.input_line_ready = false;
-                    let actual_len = line.len().min(max_len);
-                    self.bus.mem_write(param_de.wrapping_add(1), actual_len as u8);
-                    for (i, &ch) in line[..actual_len].iter().enumerate() {
-                        self.bus.mem_write(
-                            param_de.wrapping_add(2).wrapping_add(i as u16),
-                            ch,
-                        );
-                    }
-                    true
-                } else {
-                    false // Wait for Enter
-                }
-            }
-
-            // ── 11: Get Console Status ───────────────────────────────────
-            11 => {
-                self.process_console_input();
-                self.cpu.a = if self.has_input() { 0xFF } else { 0x00 };
-                true
-            }
-
-            // ── 12: Return Version Number ────────────────────────────────
-            12 => {
-                // B=0x22 (CP/M), A=0x00 (8080)
-                self.cpu.b = 0x22;
-                self.cpu.a = 0x00;
-                self.cpu.h = 0x00;
-                self.cpu.l = 0x22;
-                true
-            }
-
-            // ── 13: Reset Disk System ────────────────────────────────────
-            13 => {
-                self.cpu.a = 0;
-                self.cpu.h = 0;
-                self.cpu.l = 0;
-                true
-            }
-
-            // ── 14: Select Disk ──────────────────────────────────────────
-            14 => {
-                let drive = param_e as usize & 3;
-                if let Some(fdc_idx) = self.fdc_idx {
-                    if let Some(fdc) = self.bus.cards.get_mut(fdc_idx)
-                        .and_then(|c| c.as_any_mut().downcast_mut::<FloppyController>())
-                    {
-                        fdc.selected_drive = drive;
-                    }
-                }
-                self.cpu.a = 0;
-                true
-            }
-
-            // ── 15: Open File ─────────────────────────────────────────────
-            15 => {
-                // Read the 11-byte name+ext from FCB at DE+1
-                let mut name = [b' '; 11];
-                for i in 0..11u16 {
-                    name[i as usize] = self.bus.mem_read(param_de.wrapping_add(1 + i)) & 0x7F;
-                }
-                let drive = self.current_drive();
-                // Search directory for exact match with EX == 0
-                let mut found = false;
-                for idx in 0..CPM_DIR_ENTRIES {
-                    let entry = self.disk_read_bytes(drive, CPM_DATA_START + idx * 32, 32);
-                    if entry.len() < 32 { continue; }
-                    let status = entry[0];
-                    if status == 0xE5 || status > 0x0F { continue; }
-                    if entry[12] != 0 { continue; } // only extent 0
-                    // Exact match — treat space (0x20) and null (0x00) as equivalent padding
-                    let ok = (0..11).all(|i| {
-                        let p = name[i] & 0x7F;
-                        let e = entry[1 + i] & 0x7F;
-                        let p_blank = p == b' ' || p == 0;
-                        let e_blank = e == b' ' || e == 0;
-                        p == b'?' || (p_blank && e_blank) || p == e
-                    });
-                    if !ok { continue; }
-                    // Copy EX/S1/S2/RC and block allocation table into FCB
-                    for i in 12..32u16 {
-                        let b = entry[i as usize];
-                        self.bus.mem_write(param_de.wrapping_add(i), b);
-                    }
-                    // CR = 0
-                    self.bus.mem_write(param_de.wrapping_add(32), 0);
-                    self.cpu.a = 0;
-                    found = true;
-                    break;
-                }
-                if !found { self.cpu.a = 0xFF; }
-                true
-            }
-
-            // ── 16: Close File ────────────────────────────────────────────
-            16 => { self.cpu.a = 0; true }
-
-            // ── 17: Search First ──────────────────────────────────────────
-            17 => {
-                // Copy search pattern from FCB at DE+1
-                for i in 0..11u16 {
-                    self.dir_scan_pattern[i as usize] =
-                        self.bus.mem_read(param_de.wrapping_add(1 + i)) & 0x7F;
-                }
-                self.dir_scan_drive = self.current_drive();
-                self.dir_scan_idx = 0;
-                self.do_dir_search()
-            }
-
-            // ── 18: Search Next ───────────────────────────────────────────
-            18 => {
-                self.do_dir_search()
-            }
-
-            // ── 19: Delete File ───────────────────────────────────────────
-            19 => {
-                let mut name = [0u8; 11];
-                for i in 0..11u16 {
-                    name[i as usize] = self.bus.mem_read(param_de.wrapping_add(1 + i)) & 0x7F;
-                }
-                let drive = self.current_drive();
-                let mut deleted = false;
-                for idx in 0..CPM_DIR_ENTRIES {
-                    let offset = CPM_DATA_START + idx * 32;
-                    let entry = self.disk_read_bytes(drive, offset, 32);
-                    if entry.len() < 32 { continue; }
-                    if entry[0] == 0xE5 || entry[0] > 0x0F { continue; }
-                    let ok = (0..11usize).all(|i| {
-                        let p = name[i] & 0x7F;
-                        let e = entry[1 + i] & 0x7F;
-                        p == b'?' || p == e
-                    });
-                    if !ok { continue; }
-                    self.disk_write_byte(drive, offset, 0xE5);
-                    deleted = true;
-                }
-                self.cpu.a = if deleted { 0 } else { 0xFF };
-                true
-            }
-
-            // ── 20: Read Sequential ───────────────────────────────────────
-            20 => {
-                let ex  = self.bus.mem_read(param_de.wrapping_add(12)) as usize;
-                let rc  = self.bus.mem_read(param_de.wrapping_add(15)) as usize;
-                let cr  = self.bus.mem_read(param_de.wrapping_add(32)) as usize;
-
-                #[cfg(test)]
-                eprintln!("  fn20: ex={} rc={} cr={}", ex, rc, cr);
-
-                // RC=0 in a non-last extent means "full extent" (128 records).
-                // Only treat rc as a hard limit if it's >0.
-                if rc > 0 && cr >= rc {
-                    // Try to load the next extent from the directory
-                    if !self.advance_extent(param_de, ex) {
-                        #[cfg(test)]
-                        eprintln!("  fn20: EOF (cr={} >= rc={}, no next extent)", cr, rc);
-                        self.cpu.a = 1; // EOF
-                        return true;
-                    }
-                    // Retry read with updated FCB
-                    return self.handle_bdos();
-                }
-
-                // block_idx is relative to the CURRENT extent's AL table (0-15)
-                let block_idx   = cr / 8;
-                let rec_in_block = cr % 8;
-
-                if block_idx >= 16 {
-                    self.cpu.a = 1;
-                    return true;
-                }
-
-                let block_num = self.bus.mem_read(
-                    param_de.wrapping_add(16).wrapping_add(block_idx as u16)
-                ) as usize;
-
-                #[cfg(test)]
-                eprintln!("  fn20: block_idx={} rec={} block_num={} dma=0x{:04X}",
-                    block_idx, rec_in_block, block_num, self.bdos_dma_addr);
-
-                if block_num == 0 {
-                    // Unallocated block — try next extent
-                    if !self.advance_extent(param_de, ex) {
-                        self.cpu.a = 1;
-                        return true;
-                    }
-                    return self.handle_bdos();
-                }
-
-                let byte_off = CPM_DATA_START + block_num * CPM_BLOCK_SIZE
-                    + rec_in_block * 128;
-
-                let drive = self.current_drive();
-                let data = self.disk_read_bytes(drive, byte_off, 128);
-                let mut sector = [0u8; 128];
-                let len = data.len().min(128);
-                sector[..len].copy_from_slice(&data[..len]);
-                self.write_dma_bytes(&sector);
-
-                // Advance CR; when it reaches 128, roll into the next extent
-                let new_cr = cr + 1;
-                if new_cr >= 128 {
-                    if !self.advance_extent(param_de, ex) {
-                        // No more extents — that was the last record
-                    }
-                } else {
-                    self.bus.mem_write(param_de.wrapping_add(32), new_cr as u8);
-                }
-                #[cfg(test)]
-                eprintln!("  fn20: read OK, new_cr={}, A=0", new_cr);
-                self.cpu.a = 0;
-                true
-            }
-
-            // ── 21: Write Sequential ──────────────────────────────────────
-            21 => { self.cpu.a = 1; true }
-
-            // ── 22: Make File ─────────────────────────────────────────────
-            22 => { self.cpu.a = 0xFF; true }
-
-            // ── 25: Get Current Disk ──────────────────────────────────────
-            25 => {
-                let disk = if let Some(fdc_idx) = self.fdc_idx {
-                    if let Some(fdc) = self.bus.cards.get(fdc_idx)
-                        .and_then(|c| c.as_any().downcast_ref::<FloppyController>())
-                    {
-                        fdc.selected_drive as u8
-                    } else { 0 }
-                } else { 0 };
-                self.cpu.a = disk;
-                true
-            }
-
-            // ── 26: Set DMA Address ───────────────────────────────────────
-            26 => {
-                self.bdos_dma_addr = param_de;
-                if let Some(fdc_idx) = self.fdc_idx {
-                    if let Some(fdc) = self.bus.cards.get_mut(fdc_idx)
-                        .and_then(|c| c.as_any_mut().downcast_mut::<FloppyController>())
-                    {
-                        fdc.dma_addr = param_de;
-                    }
-                }
-                true
-            }
-
-            // ── 30: Set/Get File Attributes ──────────────────────────────
-            30 => { self.cpu.a = 0; true }
-
-            // ── 31: Get Disk Parameter Block ──────────────────────────────
-            31 => { self.cpu.h = 0; self.cpu.l = 0; true }
-
-            // ── 32: Get/Set User Code ─────────────────────────────────────
-            32 => {
-                self.cpu.a = 0; // User 0
-                true
-            }
-
-            // ── 33: Read Random Record ────────────────────────────────────
-            33 => {
-                // FCB at DE; random record in FCB[33..35]
-                let rr_lo = self.bus.mem_read(param_de.wrapping_add(33)) as u32;
-                let rr_hi = self.bus.mem_read(param_de.wrapping_add(34)) as u32;
-                let rr = rr_lo | (rr_hi << 8);
-                let ex_val = (rr / 128) as u8;
-                let cr_val = (rr % 128) as u8;
-                self.bus.mem_write(param_de.wrapping_add(12), ex_val);
-                self.bus.mem_write(param_de.wrapping_add(32), cr_val);
-                // Re-open the extent if needed
-                let name_data: Vec<u8> = (0..11u16)
-                    .map(|i| self.bus.mem_read(param_de.wrapping_add(1 + i)) & 0x7F)
-                    .collect();
-                let drive = self.current_drive();
-                for idx in 0..CPM_DIR_ENTRIES {
-                    let entry = self.disk_read_bytes(drive, CPM_DATA_START + idx * 32, 32);
-                    if entry.len() < 32 || entry[0] == 0xE5 || entry[0] > 0x0F { continue; }
-                    if entry[12] != ex_val { continue; }
-                    let ok = (0..11usize).all(|i| {
-                        let p = name_data[i] & 0x7F;
-                        let e = entry[1 + i] & 0x7F;
-                        p == b'?' || p == e
-                    });
-                    if !ok { continue; }
-                    for i in 12..32u16 {
-                        let b = entry[i as usize];
-                        self.bus.mem_write(param_de.wrapping_add(i), b);
-                    }
-                    self.bus.mem_write(param_de.wrapping_add(32), cr_val);
-                    break;
-                }
-                // Delegate to fn 20
-                let saved_fn = self.cpu.c;
-                self.cpu.c = 20;
-                let result = self.handle_bdos();
-                self.cpu.c = saved_fn;
-                result
-            }
-
-            // ── 35: Get/Set Random Record ─────────────────────────────────
-            35 | 36 => {
-                // Compute random record from FCB EX and CR
-                let ex_val = self.bus.mem_read(param_de.wrapping_add(12)) as u32;
-                let cr_val = self.bus.mem_read(param_de.wrapping_add(32)) as u32;
-                let rr = ex_val * 128 + cr_val;
-                self.bus.mem_write(param_de.wrapping_add(33), (rr & 0xFF) as u8);
-                self.bus.mem_write(param_de.wrapping_add(34), ((rr >> 8) & 0xFF) as u8);
-                self.cpu.a = 0;
-                true
-            }
-
-            _ => {
-                self.cpu.a = 0;
-                true
-            }
-        }
-    }
-
-    // ── Disk / BDOS file system helpers ───────────────────────────────────
-
-    /// Return the currently selected drive number (0=A).
-    fn current_drive(&self) -> usize {
-        if let Some(fdc_idx) = self.fdc_idx {
-            if let Some(fdc) = self.bus.cards.get(fdc_idx)
-                .and_then(|c| c.as_any().downcast_ref::<FloppyController>())
-            {
-                return fdc.selected_drive;
-            }
-        }
-        0
-    }
-
-    /// Read `len` bytes from a drive image at `offset`. Returns an owned Vec
-    /// (releases the borrow immediately) so callers can safely take a &mut self
-    /// borrow afterward.
-    fn disk_read_bytes(&self, drive: usize, offset: usize, len: usize) -> Vec<u8> {
-        let fdc_idx = match self.fdc_idx { Some(i) => i, None => return vec![0; len] };
-        let fdc = match self.bus.cards.get(fdc_idx)
-            .and_then(|c| c.as_any().downcast_ref::<FloppyController>())
-        { Some(f) => f, None => return vec![0; len] };
-        let disk = match &fdc.drives[drive.min(3)] {
-            Some(d) => d,
-            None => return vec![0; len],
-        };
-        let mut out = vec![0u8; len];
-        if offset < disk.len() {
-            let end = (offset + len).min(disk.len());
-            out[..end - offset].copy_from_slice(&disk[offset..end]);
-        }
-        out
-    }
-
-    /// Write a single byte to the disk image at the given drive and byte offset.
-    fn disk_write_byte(&mut self, drive: usize, offset: usize, value: u8) {
-        let fdc_idx = match self.fdc_idx { Some(i) => i, None => return };
-        if let Some(fdc) = self.bus.cards.get_mut(fdc_idx)
-            .and_then(|c| c.as_any_mut().downcast_mut::<FloppyController>())
-        {
-            if let Some(disk) = fdc.drives[drive.min(3)].as_mut() {
-                if offset < disk.len() {
-                    disk[offset] = value;
-                }
-            }
-        }
-    }
-
-    /// Write `data` into bus memory starting at the current BDOS DMA address.
-    fn write_dma_bytes(&mut self, data: &[u8]) {
-        let addr = self.bdos_dma_addr;
-        for (i, &byte) in data.iter().enumerate() {
-            self.bus.mem_write(addr.wrapping_add(i as u16), byte);
-        }
-    }
-
-    /// Load the next extent (ex+1) for the file whose FCB is at `fcb_addr`.
-    /// Scans the directory for a matching entry with EX == ex+1 and the same name.
-    /// If found, copies AL[]/RC/EX into the FCB and resets CR to 0.
-    /// Returns true if the next extent was found and loaded.
-    fn advance_extent(&mut self, fcb_addr: u16, current_ex: usize) -> bool {
-        let next_ex = (current_ex + 1) as u8;
-        // Read filename from FCB bytes 1-11
-        let mut name = [0u8; 11];
-        for i in 0..11u16 {
-            name[i as usize] = self.bus.mem_read(fcb_addr.wrapping_add(1 + i)) & 0x7F;
-        }
-        let drive = self.current_drive();
-        for idx in 0..CPM_DIR_ENTRIES {
-            let entry = self.disk_read_bytes(drive, CPM_DATA_START + idx * 32, 32);
-            if entry.len() < 32 { continue; }
-            if entry[0] == 0xE5 || entry[0] > 0x0F { continue; }
-            if (entry[12] & 0x1F) != (next_ex & 0x1F) { continue; }
-            // Name match
-            let ok = (0..11).all(|i| {
-                let p = name[i] & 0x7F;
-                let e = entry[1 + i] & 0x7F;
-                p == b'?' || p == e
-            });
-            if !ok { continue; }
-            // Copy EX, S1, S2, RC, AL[] into FCB
-            for i in 12..32u16 {
-                let b = entry[i as usize];
-                self.bus.mem_write(fcb_addr.wrapping_add(i), b);
-            }
-            // Reset CR
-            self.bus.mem_write(fcb_addr.wrapping_add(32), 0);
-            return true;
-        }
-        false
-    }
-
-    /// Core Search First/Next logic — scans from `dir_scan_idx` and returns
-    /// true when complete (whether a match was found or not).
-    fn do_dir_search(&mut self) -> bool {
-        let pattern = self.dir_scan_pattern; // copy; [u8;11] is Copy
-        let drive = self.dir_scan_drive;
-
-        while self.dir_scan_idx < CPM_DIR_ENTRIES {
-            let idx = self.dir_scan_idx;
-            self.dir_scan_idx += 1;
-
-            let entry = self.disk_read_bytes(drive, CPM_DATA_START + idx * 32, 32);
-            if entry.len() < 32 { continue; }
-
-            let status = entry[0];
-            if status == 0xE5 || status > 0x0F { continue; } // deleted / non-user
-
-            // Pattern match (bit 7 stripped from both)
-            let matched = (0..11usize).all(|i| {
-                let p = pattern[i] & 0x7F;
-                let e = entry[1 + i] & 0x7F;
-                p == b'?' || p == e
-            });
-            if !matched { continue; }
-
-            // Fill DMA with the 4-entry 128-byte block aligned to idx
-            let aligned = idx & !3;
-            let block = self.disk_read_bytes(drive, CPM_DATA_START + aligned * 32, 128);
-            self.write_dma_bytes(&block);
-
-            self.cpu.a = (idx & 3) as u8;
-            return true;
-        }
-
-        self.cpu.a = 0xFF; // not found
-        true
-    }
-
-    // ── Console helpers ────────────────────────────────────────────────────
-
-    /// Drain serial RX buffer, assembling characters into the input line buffer.
-    /// Echoes characters and handles backspace. Returns true if a line is now ready.
-    fn process_console_input(&mut self) -> bool {
-        let idx = match self.serial_idx { Some(i) => i, None => return false };
-
-        // Drain all available chars in one borrow block
-        let chars: Vec<u8> = {
-            if let Some(card) = self.bus.cards.get_mut(idx) {
-                if let Some(serial) = card.as_any_mut().downcast_mut::<SerialCard>() {
-                    serial.rx_buf.drain(..).collect()
-                } else { vec![] }
-            } else { vec![] }
-        };
-
-        for ch in chars {
-            match ch {
-                b'\r' | b'\n' => {
-                    self.input_line_ready = true;
-                    // Echo CRLF
-                    self.serial_out(b'\r');
-                    self.serial_out(b'\n');
-                }
-                0x08 | 0x7F => {
-                    // Backspace
-                    if !self.input_line_buf.is_empty() {
-                        self.input_line_buf.pop();
-                        self.serial_out(0x08);
-                        self.serial_out(0x20);
-                        self.serial_out(0x08);
-                    }
-                }
-                ch => {
-                    self.input_line_buf.push(ch);
-                    self.serial_out(ch); // echo
-                }
-            }
-        }
-
-        self.input_line_ready
-    }
-
-    /// Take the next character from the input buffer (for CONIN / function 1).
-    fn take_input_char(&mut self) -> Option<u8> {
-        if !self.input_line_buf.is_empty() {
-            return Some(self.input_line_buf.remove(0));
-        }
-        // Also try the serial RX directly for raw char input
-        let idx = self.serial_idx?;
-        if let Some(card) = self.bus.cards.get_mut(idx) {
-            if let Some(serial) = card.as_any_mut().downcast_mut::<SerialCard>() {
-                return serial.rx_buf.pop_front();
-            }
-        }
-        None
-    }
-
-    fn has_input(&self) -> bool {
-        if !self.input_line_buf.is_empty() { return true; }
-        if let Some(idx) = self.serial_idx {
-            if let Some(card) = self.bus.cards.get(idx) {
-                if let Some(serial) = card.as_any().downcast_ref::<SerialCard>() {
-                    return !serial.rx_buf.is_empty();
-                }
-            }
-        }
-        false
-    }
-
-    fn serial_out(&mut self, ch: u8) {
-        if let Some(idx) = self.serial_idx {
-            if let Some(card) = self.bus.cards.get_mut(idx) {
-                if let Some(serial) = card.as_any_mut().downcast_mut::<SerialCard>() {
-                    serial.tx_buf.push_back(ch);
-                }
-            }
-        }
-    }
 }
 
 // ── Minimal base64 decoder ────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ export const emulator_readMemory: (a: number, b: number) => number;
 export const emulator_reset: (a: number) => void;
 export const emulator_sendSerialInput: (a: number, b: number) => void;
 export const emulator_sendSerialString: (a: number, b: number, c: number) => void;
+export const emulator_setPC: (a: number, b: number) => void;
 export const emulator_step: (a: number, b: number) => number;
 export const emulator_traceTotal: (a: number) => bigint;
 export const emulator_writeMemory: (a: number, b: number, c: number) => void;

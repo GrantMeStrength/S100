@@ -144,6 +144,13 @@ export class Emulator {
         wasm.emulator_sendSerialString(this.__wbg_ptr, ptr0, len0);
     }
     /**
+     * Set the CPU program counter directly (used for ROM-based boot sequences).
+     * @param {number} pc
+     */
+    setPC(pc) {
+        wasm.emulator_setPC(this.__wbg_ptr, pc);
+    }
+    /**
      * Run for at least `cycles` T-states. Returns actual cycles run.
      * @param {number} cycles
      * @returns {number}

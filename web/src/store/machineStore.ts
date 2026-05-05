@@ -138,16 +138,40 @@ export const DEFAULT_MACHINE = JSON.stringify({
   ],
 });
 
-export const CPM_MACHINE = JSON.stringify({
-  name: 'CP/M 2.2 System',
+export const ALTAIR_CPM_MACHINE = JSON.stringify({
+  name: 'Altair 8800 CP/M 2.2',
   slots: [
-    { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
-    { slot: 1, card: 'boot_rom', params: { phantom_port: 0xFF } },
-    { slot: 2, card: 'ram',      params: { base: 0, size: 65536 } },
-    { slot: 3, card: 'serial',   params: { data_port: 0, status_port: 1 } },
-    { slot: 4, card: 'fdc' },
+    { slot: 0, card: 'cpu_8080',    params: { speed_hz: 2_000_000 } },
+    { slot: 1, card: 'ram',         params: { base: 0, size: 65536 } },
+    { slot: 2, card: 'sio_88_2sio' },
+    { slot: 3, card: 'dcdd_88' },
   ],
 });
+
+// Keep CPM_MACHINE as alias so IMSAI preset still works temporarily
+export const CPM_MACHINE = ALTAIR_CPM_MACHINE;
+
+// MITS 88-DCDD bootstrap ROM — loads at 0xFF00, jumps to DSKBOOT at 0xFF30
+// Source: SIMH altair_dsk.c "bootrom_dsk" array
+export const ALTAIR_BOOT_ROM = new Uint8Array([
+  0xf3,0x06,0x80,0x3e,0x0e,0xd3,0xfe,0x05, 0xc2,0x05,0xff,0x3e,0x16,0xd3,0xfe,0x3e,
+  0x12,0xd3,0xfe,0xdb,0xfe,0xb7,0xca,0x20, 0xff,0x3e,0x0c,0xd3,0xfe,0xaf,0xd3,0xfe,
+  0x21,0x00,0x5c,0x11,0x33,0xff,0x0e,0x88, 0x1a,0x77,0x13,0x23,0x0d,0xc2,0x28,0xff,
+  0xc3,0x00,0x5c,0x31,0x21,0x5d,0x3e,0x00, 0xd3,0x08,0x3e,0x04,0xd3,0x09,0xc3,0x19,
+  0x5c,0xdb,0x08,0xe6,0x02,0xc2,0x0e,0x5c, 0x3e,0x02,0xd3,0x09,0xdb,0x08,0xe6,0x40,
+  0xc2,0x0e,0x5c,0x11,0x00,0x00,0x06,0x08, 0xc5,0xd5,0x11,0x86,0x80,0x21,0x88,0x5c,
+  0xdb,0x09,0x1f,0xda,0x2d,0x5c,0xe6,0x1f, 0xb8,0xc2,0x2d,0x5c,0xdb,0x08,0xb7,0xfa,
+  0x39,0x5c,0xdb,0x0a,0x77,0x23,0x1d,0xc2, 0x39,0x5c,0xd1,0x21,0x8b,0x5c,0x06,0x80,
+  0x7e,0x12,0x23,0x13,0x05,0xc2,0x4d,0x5c, 0xc1,0x21,0x00,0x5c,0x7a,0xbc,0xc2,0x60,
+  0x5c,0x7b,0xbd,0xd2,0x80,0x5c,0x04,0x04, 0x78,0xfe,0x20,0xda,0x25,0x5c,0x06,0x01,
+  0xca,0x25,0x5c,0xdb,0x08,0xe6,0x02,0xc2, 0x70,0x5c,0x3e,0x01,0xd3,0x09,0x06,0x00,
+  0xc3,0x25,0x5c,0x3e,0x80,0xd3,0x08,0xfb, 0xc3,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  // 0xFF C0–FF: zeros
+  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+]);
 
 // ── System presets ─────────────────────────────────────────────────────────────
 
@@ -178,7 +202,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
   {
     id: 'altair_cpm',
     label: 'Altair 8800 — 64K CP/M 2.2',
-    machine: CPM_MACHINE,
+    machine: ALTAIR_CPM_MACHINE,
     cpm: true,
   },
   {
@@ -387,37 +411,30 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     try {
       set({ running: false });
 
-      // Load CP/M machine config (64K RAM + serial + FDC)
-      wasm.loadMachine(CPM_MACHINE);
+      // Load Altair hardware config (64K RAM + 88-2SIO + 88-DCDD)
+      wasm.loadMachine(ALTAIR_CPM_MACHINE);
 
-      // Write boot vector (JMP 0xFA00) at 0x0000
-      const bootVec = buildBootVector();
-      wasm.loadBinary(0x0000, bootVec);
+      // Load MITS 88-DCDD bootstrap ROM into RAM at 0xFF00
+      wasm.loadBinary(0xFF00, ALTAIR_BOOT_ROM);
 
-      // Write minimal BIOS at 0xFA00 (LXI SP, 0xEFFF + JMP 0xDC00)
-      const bios = buildBios();
-      wasm.loadBinary(0xFA00, bios);
-
-      // Write minimal CCP at 0xDC00
-      const ccp = buildCcp();
-      wasm.loadBinary(0xDC00, ccp);
-
-      // Fetch and insert CPM22.dsk as drive A
-      const resp = await fetch('/CPM22.dsk');
-      if (!resp.ok) throw new Error(`Failed to fetch CPM22.dsk: ${resp.status}`);
+      // Fetch and insert Altair CP/M 2.2 disk image as drive A
+      const resp = await fetch('/AltairCPM22.dsk');
+      if (!resp.ok) throw new Error(`Failed to fetch AltairCPM22.dsk: ${resp.status}`);
       const buf = await resp.arrayBuffer();
-      const diskData = new Uint8Array(buf);
-      wasm.insertDisk(0, diskData);
+      wasm.insertDisk(0, new Uint8Array(buf));
+
+      // Point CPU at the boot ROM (no reset — RAM must retain loaded ROM)
+      wasm.setPC(0xFF00);
 
       set({
-        machineJson: CPM_MACHINE,
-        slots: parseMachineConfig(CPM_MACHINE).slots,
-        machineName: 'CP/M 2.2 System',
+        machineJson: ALTAIR_CPM_MACHINE,
+        slots: parseMachineConfig(ALTAIR_CPM_MACHINE).slots,
+        machineName: 'Altair 8800 CP/M 2.2',
         mode: 'cpm',
         terminalOutput: '',
         traceEntries: [],
         traceCursor: 0,
-        diskStatus: ['CPM22.dsk', null, null, null],
+        diskStatus: ['AltairCPM22.dsk', null, null, null],
         error: null,
         running: true,
         actionsApplied: false,
@@ -469,14 +486,13 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       wasm.loadMachine(machineJson);
 
       if (preset.cpm) {
-        wasm.loadBinary(0x0000, buildBootVector());
-        wasm.loadBinary(0xFA00, buildBios());
-        wasm.loadBinary(0xDC00, buildCcp());
-        const resp = await fetch('/CPM22.dsk');
-        if (!resp.ok) throw new Error(`Failed to fetch CPM22.dsk: ${resp.status}`);
+        wasm.loadBinary(0xFF00, ALTAIR_BOOT_ROM);
+        const resp = await fetch('/AltairCPM22.dsk');
+        if (!resp.ok) throw new Error(`Failed to fetch AltairCPM22.dsk: ${resp.status}`);
         const buf = await resp.arrayBuffer();
         wasm.insertDisk(0, new Uint8Array(buf));
-        set({ machineJson, mode: 'cpm', diskStatus: ['CPM22.dsk', null, null, null] });
+        wasm.setPC(0xFF00);
+        set({ machineJson, mode: 'cpm', diskStatus: ['AltairCPM22.dsk', null, null, null] });
       } else {
         set({ machineJson, mode: 'demo' });
       }

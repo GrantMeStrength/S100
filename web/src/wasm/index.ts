@@ -116,3 +116,7 @@ export function insertDisk(drive: number, data: Uint8Array): void {
 export function getDiskData(drive: number): Uint8Array {
   return getEmulator().getDiskData(drive);
 }
+
+export function setPC(pc: number): void {
+  getEmulator().setPC(pc);
+}
