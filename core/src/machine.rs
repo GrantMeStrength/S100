@@ -7,6 +7,7 @@ use crate::cards::{
     dazzler::DazzlerCard,
     dcdd::Dcdd88Card,
     fdc::FloppyController,
+    fdc_wd1793::WD1793Card,
     ram::RamCard,
     rom::RomCard,
     serial::SerialCard,
@@ -196,6 +197,23 @@ impl Machine {
                     self.bus.add_card(Box::new(DazzlerCard::new("Dazzler")));
                 }
 
+                "fdc_wd1793" => {
+                    let base = slot.params.get("base_port")
+                        .and_then(Value::as_u64).unwrap_or(0x34) as u8;
+                    let sel = slot.params.get("drive_select_port")
+                        .and_then(Value::as_u64).unwrap_or(0x30) as u8;
+                    let tracks = slot.params.get("tracks")
+                        .and_then(Value::as_u64).unwrap_or(77) as u8;
+                    let sectors = slot.params.get("sectors")
+                        .and_then(Value::as_u64).unwrap_or(26) as u8;
+                    let sector_size = slot.params.get("sector_size")
+                        .and_then(Value::as_u64).unwrap_or(128) as usize;
+                    self.fdc_idx = Some(self.bus.cards.len());
+                    self.bus.add_card(Box::new(WD1793Card::new(
+                        "WD1793", base, sel, tracks, sectors, sector_size,
+                    )));
+                }
+
                 other => {
                     return Err(format!("unknown card type: {other}"));
                 }
@@ -330,6 +348,10 @@ impl Machine {
                 }
                 if let Some(dcdd) = card.as_any_mut().downcast_mut::<Dcdd88Card>() {
                     dcdd.insert_disk(drive as usize, data);
+                    return;
+                }
+                if let Some(wd) = card.as_any_mut().downcast_mut::<WD1793Card>() {
+                    wd.insert_disk(drive as usize, data);
                 }
             }
         }
@@ -343,6 +365,9 @@ impl Machine {
                 }
                 if let Some(dcdd) = card.as_any().downcast_ref::<Dcdd88Card>() {
                     return dcdd.drives[drive as usize & 3].clone();
+                }
+                if let Some(wd) = card.as_any().downcast_ref::<WD1793Card>() {
+                    return wd.drives[drive as usize & 3].clone();
                 }
             }
         }

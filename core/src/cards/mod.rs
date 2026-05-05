@@ -2,6 +2,7 @@ pub mod boot_rom;
 pub mod dazzler;
 pub mod dcdd;
 pub mod fdc;
+pub mod fdc_wd1793;
 pub mod ram;
 pub mod rom;
 pub mod serial;
