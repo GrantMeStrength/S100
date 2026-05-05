@@ -3,7 +3,6 @@ use serde_json::Value;
 
 use crate::bus::{Bus, BusInterface};
 use crate::cards::{
-    boot_rom::BootRomCard,
     cpu_z80::Z80Card,
     dazzler::DazzlerCard,
     dcdd::Dcdd88Card,
@@ -195,10 +194,16 @@ impl Machine {
                     return Err(format!("unknown cpu card type: {c}"));
                 }
 
-                "boot_rom" => {
+                "rom" => {
+                    let base = slot.params.get("base")
+                        .and_then(Value::as_u64).unwrap_or(0x0000) as u16;
+                    let data = Self::load_rom_data(&slot.params)?;
                     let phantom_port = slot.params.get("phantom_port")
-                        .and_then(Value::as_u64).unwrap_or(0x71) as u8;
-                    self.bus.add_card(Box::new(BootRomCard::new("boot_rom", phantom_port)));
+                        .and_then(Value::as_u64).map(|v| v as u8);
+                    let name = format!("rom@{base:#06x}");
+                    let mut card = RomCard::new(name, base, data);
+                    card.phantom_port = phantom_port;
+                    self.bus.add_card(Box::new(card));
                 }
 
                 "ram" | "ram_64k" => {
@@ -208,14 +213,6 @@ impl Machine {
                         .and_then(Value::as_u64).unwrap_or(65536) as usize;
                     let name = format!("ram@{base:#06x}");
                     self.bus.add_card(Box::new(RamCard::new(name, base, size)));
-                }
-
-                "rom" => {
-                    let base = slot.params.get("base")
-                        .and_then(Value::as_u64).unwrap_or(0x0000) as u16;
-                    let data = Self::load_rom_data(&slot.params)?;
-                    let name = format!("rom@{base:#06x}");
-                    self.bus.add_card(Box::new(RomCard::new(name, base, data)));
                 }
 
                 "serial" | "serial_sio" => {

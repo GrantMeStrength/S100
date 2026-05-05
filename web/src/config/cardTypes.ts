@@ -117,21 +117,6 @@ const SPEED_OPTIONS = [
 
 export const CARD_TYPES: CardTypeInfo[] = [
   {
-    id: 'boot_rom',
-    label: 'Shadow ROM',
-    shortLabel: 'BROM',
-    color: '#1a1a0a',
-    accent: '#b8860b',
-    description: 'JAIR-style shadow ROM that sits at address 0x0000 on reset. A tiny bootstrap writes to the phantom I/O port to page itself out, then jumps back to 0x0000 — which now hits the RAM card underneath.',
-    ports: [
-      { range: '0x71 (default)', direction: 'OUT', description: 'Phantom port — any write pages out the shadow ROM.' },
-    ],
-    defaultParams: { phantom_port: 0x71 },
-    configFields: [
-      { key: 'phantom_port', label: 'Phantom port (JAIR default: 0x71)', type: 'hex', min: 0, max: 0xFF, default: 0x71 },
-    ],
-  },
-  {
     id: 'cpu_8080',
     label: 'Intel 8080 CPU',
     shortLabel: 'CPU',
@@ -176,13 +161,14 @@ export const CARD_TYPES: CardTypeInfo[] = [
     shortLabel: 'ROM',
     color: '#0d1e35',
     accent: '#2980b9',
-    description: 'Read-only memory card. Choose a built-in ROM image from the library, or upload a custom binary. Address range is set by jumpers (base address and size). Writes to the ROM address range are silently ignored.',
+    description: 'Read-only memory card. Choose a built-in ROM image from the library, or upload a custom binary. Address range is set by jumpers (base address and size). Writes are silently ignored. Optional: set a phantom port to page the ROM out of the address space on any write to that I/O port (Shadow ROM / boot-ROM behaviour).',
     defaultParams: { base: 0xF800, size: 2048, rom_image: 'memon80' },
     configFields: [
       { key: 'rom_image', label: 'ROM chip (jumper select)', type: 'romimage', default: 'memon80' },
       { key: 'base', label: 'Base address', type: 'hex', min: 0, max: 0xFFFF, default: 0xF800 },
       { key: 'size', label: 'Size (bytes)',  type: 'number', min: 256, max: 32768, step: 256, default: 2048 },
       { key: '_file', label: 'Custom ROM image (.bin)', type: 'file', accept: '.bin,.rom,.img,.hex', default: null },
+      { key: 'phantom_port', label: 'Phantom port — write pages ROM out (optional)', type: 'hex', min: 0, max: 0xFF, default: null },
     ],
   },
   {

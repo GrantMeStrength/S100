@@ -1,4 +1,3 @@
-pub mod boot_rom;
 pub mod dazzler;
 pub mod dcdd;
 pub mod fdc;
