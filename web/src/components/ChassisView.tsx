@@ -120,13 +120,12 @@ export function ChassisView() {
                       {info.label}
                     </span>
 
-                    {(info.configFields.length > 0 || !!info.stub) && (
-                      <button
-                        onClick={() => setConfigSlot(i)}
-                        title="Configure"
-                        style={iconBtn}
-                      >⚙</button>
-                    )}
+                    {/* Settings button — always shown */}
+                    <button
+                      onClick={() => setConfigSlot(i)}
+                      title="Card info & settings"
+                      style={iconBtn}
+                    >⚙</button>
 
                     <button
                       onClick={() => removeCard(i)}

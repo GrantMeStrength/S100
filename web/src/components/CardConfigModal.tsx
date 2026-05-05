@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { SlotEntry } from '../store/machineStore';
 import { useMachineStore } from '../store/machineStore';
 import { getCardType, ROM_IMAGES, getRomImage } from '../config/cardTypes';
-import type { ConfigField } from '../config/cardTypes';
+import type { ConfigField, PortInfo } from '../config/cardTypes';
 
 interface Props {
   slot: number;
@@ -145,21 +145,31 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
               }}>
                 ⚠ {info.stub}
               </div>
-            ) : info.configFields.length === 0 ? (
-              <div style={{ color: '#484f58', fontSize: 12 }}>No configurable parameters.</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {info.configFields.map(field => (
-                  <FieldRow
-                    key={field.key}
-                    field={field}
-                    value={params[field.key]}
-                    fileName={params['_fileName'] as string | undefined}
-                    hasBase64={!!params['data_base64']}
-                    onChange={v => setParam(field.key, v)}
-                    onFile={handleFileLoad}
-                  />
-                ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {/* Port table — always shown when ports are defined */}
+                {info.ports && info.ports.length > 0 && (
+                  <PortTable ports={info.ports} accent={info.accent} />
+                )}
+
+                {/* Config fields */}
+                {info.configFields.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {info.configFields.map(field => (
+                      <FieldRow
+                        key={field.key}
+                        field={field}
+                        value={params[field.key]}
+                        fileName={params['_fileName'] as string | undefined}
+                        hasBase64={!!params['data_base64']}
+                        onChange={v => setParam(field.key, v)}
+                        onFile={handleFileLoad}
+                      />
+                    ))}
+                  </div>
+                ) : !info.ports?.length ? (
+                  <div style={{ color: '#484f58', fontSize: 12 }}>No configurable parameters.</div>
+                ) : null}
               </div>
             )}
           </div>
@@ -204,6 +214,54 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Port table ──────────────────────────────────────────────────────────────
+
+function PortTable({ ports, accent }: { ports: PortInfo[]; accent: string }) {
+  const dirColor = (d: PortInfo['direction']) =>
+    d === 'IN' ? '#3fb950' : d === 'OUT' ? '#f78166' : '#d2a679';
+
+  return (
+    <div>
+      <div style={{ color: '#8b949e', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>
+        I/O Ports
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <thead>
+          <tr style={{ color: '#484f58', fontSize: 10 }}>
+            <th style={{ textAlign: 'left', padding: '2px 6px 4px 0', fontWeight: 500, whiteSpace: 'nowrap' }}>Port</th>
+            <th style={{ textAlign: 'left', padding: '2px 6px 4px', fontWeight: 500 }}>Dir</th>
+            <th style={{ textAlign: 'left', padding: '2px 0 4px 6px', fontWeight: 500 }}>Function</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ports.map((p, i) => (
+            <tr key={i} style={{ borderTop: `1px solid ${accent}22` }}>
+              <td style={{ padding: '4px 6px 4px 0', fontFamily: 'monospace', color: accent, whiteSpace: 'nowrap' }}>
+                {p.range}
+              </td>
+              <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                <span style={{
+                  color: dirColor(p.direction),
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  background: `${dirColor(p.direction)}18`,
+                  borderRadius: 2,
+                  padding: '1px 4px',
+                }}>
+                  {p.direction}
+                </span>
+              </td>
+              <td style={{ padding: '4px 0 4px 6px', color: '#8b949e', lineHeight: 1.4 }}>
+                {p.description}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

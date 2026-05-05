@@ -65,6 +65,12 @@ export interface ConfigField {
   accept?: string;   // file picker filter
 }
 
+export interface PortInfo {
+  range: string;    // e.g. "0x08–0x0A" or "0x10"
+  direction: 'IN' | 'OUT' | 'IN/OUT';
+  description: string;
+}
+
 export interface CardTypeInfo {
   id: string;
   label: string;
@@ -72,6 +78,8 @@ export interface CardTypeInfo {
   color: string;       // background
   accent: string;      // border / highlight
   description: string;
+  /** Structured port usage info shown in the settings panel. */
+  ports?: PortInfo[];
   defaultParams: Record<string, unknown>;
   configFields: ConfigField[];
   /** Only one instance allowed in a machine (e.g. CPU). */
@@ -87,7 +95,10 @@ export const CARD_TYPES: CardTypeInfo[] = [
     shortLabel: 'BROM',
     color: '#1a1a0a',
     accent: '#b8860b',
-    description: 'JAIR-style bootstrap ROM at 0x0000; pages out via I/O port',
+    description: 'JAIR-style shadow ROM that sits at address 0x0000 on reset. A tiny bootstrap writes to the phantom I/O port to page itself out, then jumps back to 0x0000 — which now hits the RAM card underneath.',
+    ports: [
+      { range: '0x71 (default)', direction: 'OUT', description: 'Phantom port — any write pages out the shadow ROM.' },
+    ],
     defaultParams: { phantom_port: 0x71 },
     configFields: [
       { key: 'phantom_port', label: 'Phantom port (JAIR default: 0x71)', type: 'hex', min: 0, max: 0xFF, default: 0x71 },
@@ -99,7 +110,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     shortLabel: 'CPU',
     color: '#2a1040',
     accent: '#9b59b6',
-    description: 'Intel 8080A processor',
+    description: 'Intel 8080A processor running at a configurable clock rate. Supports all standard 8080 instructions, memory-mapped I/O, RST interrupts, and HOLD/HLDA bus arbitration.',
     unique: true,
     defaultParams: { speed_hz: 2_000_000 },
     configFields: [
@@ -112,7 +123,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     shortLabel: 'Z80',
     color: '#1a0a30',
     accent: '#7d5af5',
-    description: 'Zilog Z80 processor',
+    description: 'Zilog Z80 processor — fully compatible with the 8080 instruction set, plus extended instructions (IX/IY registers, CB/DD/ED/FD prefixes), two interrupt modes, and block operations.',
     unique: true,
     stub: 'Z80 emulation is planned for a future release. The card will be added to the chassis but the CPU will fall back to 8080-compatible mode.',
     defaultParams: {},
@@ -124,7 +135,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     shortLabel: 'RAM',
     color: '#0d2e1a',
     accent: '#27ae60',
-    description: 'Static read/write memory',
+    description: 'Static read/write memory occupying a configurable address range. On an S-100 bus the RAM card responds to MEMR and MEMW control signals. Multiple RAM cards can coexist at different base addresses.',
     defaultParams: { base: 0x0000, size: 65536 },
     configFields: [
       { key: 'base', label: 'Base address', type: 'hex', min: 0, max: 0xFFFF, default: 0x0000 },
@@ -137,7 +148,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     shortLabel: 'ROM',
     color: '#0d1e35',
     accent: '#2980b9',
-    description: 'Read-only memory — choose a ROM image to "plug in", or upload a custom binary.',
+    description: 'Read-only memory card. Choose a built-in ROM image from the library, or upload a custom binary. Address range is set by jumpers (base address and size). Writes to the ROM address range are silently ignored.',
     defaultParams: { base: 0xF800, size: 2048, rom_image: 'memon80' },
     configFields: [
       { key: 'rom_image', label: 'ROM chip (jumper select)', type: 'romimage', default: 'memon80' },
@@ -152,7 +163,11 @@ export const CARD_TYPES: CardTypeInfo[] = [
     shortLabel: 'SIO',
     color: '#2e1a0d',
     accent: '#e67e22',
-    description: 'UART serial I/O (console). JAIR/typical: data 0x00, status 0x01. Cromemco SIO-2: 0x10/0x11.',
+    description: 'Generic UART serial I/O card providing the system console. Port addresses are configurable to match the target hardware (JAIR: 0x00/0x01, Cromemco SIO-2: 0x10/0x11). Status bits and polarity are also adjustable.',
+    ports: [
+      { range: 'status_port (default 0x01)', direction: 'IN',     description: 'Status register — bit indicates RX data available / TX ready.' },
+      { range: 'data_port   (default 0x00)', direction: 'IN/OUT', description: 'Data register — read received byte / write byte to transmit.' },
+    ],
     defaultParams: { data_port: 0x00, status_port: 0x01 },
     configFields: [
       { key: 'data_port',   label: 'Data port (JAIR: 0x00)', type: 'hex', min: 0, max: 0xFF, default: 0x00 },
@@ -165,7 +180,13 @@ export const CARD_TYPES: CardTypeInfo[] = [
     shortLabel: 'FDC',
     color: '#2e250d',
     accent: '#f39c12',
-    description: 'CP/M FDC (BDOS trap). WD1771 typ: cmd 0xE0, track 0xE1, sector 0xE2, data 0xE3.',
+    description: 'Generic software-emulated floppy disk controller for CP/M systems. Implements a WD1771-style register interface. The CP/M BIOS communicates through standard register reads and writes.',
+    ports: [
+      { range: '0xE0', direction: 'OUT',    description: 'Command register — send WD1771 command.' },
+      { range: '0xE1', direction: 'IN/OUT', description: 'Track register.' },
+      { range: '0xE2', direction: 'IN/OUT', description: 'Sector register.' },
+      { range: '0xE3', direction: 'IN/OUT', description: 'Data register — read/write sector data.' },
+    ],
     defaultParams: {},
     configFields: [],
   },
@@ -175,7 +196,14 @@ export const CARD_TYPES: CardTypeInfo[] = [
     shortLabel: 'DCDD',
     color: '#2e1a0a',
     accent: '#d4802a',
-    description: 'MITS 88-DCDD hard-sector floppy controller. 77 tracks × 32 sectors × 137 bytes. Ports 0x08–0x0A.',
+    description: 'Authentic MITS 88-DCDD hard-sector floppy disk controller as used in the original Altair 8800. Supports 77 tracks × 32 sectors × 137 bytes per sector (IBM 3740 hard-sector format, ~330 KB per disk). Compatible with the SIMH Altair CP/M 2.2 disk image.',
+    ports: [
+      { range: '0x08', direction: 'IN',     description: 'Drive status (active-low). Bit 7: data ready / bit 6: track 0 / bit 2: head loaded / bit 1: movement OK / bit 0: write ready.' },
+      { range: '0x08', direction: 'OUT',    description: 'Drive select. Bit 7 = deselect all; bits 3–0 = drive number (0–3).' },
+      { range: '0x09', direction: 'IN',     description: 'Sector position. Bits 5–1: sector counter (0–31); bit 0: sector-true flag (0 = sector is under head).' },
+      { range: '0x09', direction: 'OUT',    description: 'Disk control. Bit 0: step in / bit 1: step out / bit 2: load head / bit 3: unload head / bit 7: write enable.' },
+      { range: '0x0A', direction: 'IN/OUT', description: 'Data port — sequential byte access through the 137-byte physical sector (bytes 0–136). Auto-advances on each access.' },
+    ],
     defaultParams: {},
     configFields: [],
   },
@@ -185,7 +213,13 @@ export const CARD_TYPES: CardTypeInfo[] = [
     shortLabel: '2SIO',
     color: '#0d2030',
     accent: '#3a9fd4',
-    description: 'MITS 88-2SIO dual MC6850 ACIA serial card. Status 0x10, data 0x11.',
+    description: 'Authentic MITS 88-2SIO dual serial I/O card as used in the original Altair 8800. Based on the Motorola MC6850 ACIA. Provides the system console for Altair CP/M. Channel A is emulated on ports 0x10/0x11.',
+    ports: [
+      { range: '0x10', direction: 'IN',     description: 'Status register. Bit 0: RDRF — receive data register full (1 = character waiting). Bit 1: TDRE — transmit data register empty (always 1).' },
+      { range: '0x10', direction: 'OUT',    description: 'Control register — master reset and baud rate divisor (accepted but ignored in emulation).' },
+      { range: '0x11', direction: 'IN',     description: 'Receive data register — read the next received character.' },
+      { range: '0x11', direction: 'OUT',    description: 'Transmit data register — write a character to send to the terminal.' },
+    ],
     defaultParams: {},
     configFields: [],
   },
