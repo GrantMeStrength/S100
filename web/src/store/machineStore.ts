@@ -153,6 +153,19 @@ export const ALTAIR_CPM_MACHINE = JSON.stringify({
   ],
 });
 
+export const ALTAIR_CPM_Z80_MACHINE = JSON.stringify({
+  name: 'Altair Z80 CP/M 2.2',
+  slots: [
+    { slot: 0, card: 'cpu_z80',     params: { speed_hz: 2_000_000 } },
+    { slot: 1, card: 'ram',         params: { base: 0, size: 65536 } },
+    { slot: 2, card: 'sio_88_2sio' },
+    { slot: 3, card: 'dcdd_88' },
+  ],
+  actions: [
+    { id: 'altair-boot-vector', type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 FF' }] } },
+  ],
+});
+
 // Keep CPM_MACHINE as alias so IMSAI preset still works temporarily
 export const CPM_MACHINE = ALTAIR_CPM_MACHINE;
 
@@ -264,6 +277,12 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     cpm: true,
   },
   {
+    id: 'altair_cpm_z80',
+    label: 'Altair Z80 — 64K CP/M 2.2',
+    machine: ALTAIR_CPM_Z80_MACHINE,
+    cpm: true,
+  },
+  {
     // MITS Altair BASIC Rev. 4.0 (Eight-K Version) — copyright 1976 by MITS Inc.
     // Loads at 0x0000; uses 88-SIO: status on port 0x00, data on port 0x01.
     // 88-SIO RX status is active-low: bit 0 CLEAR = data ready (status_rx_invert).
@@ -275,8 +294,8 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
       slots: [
         { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
         { slot: 1, card: 'ram',      params: { base: 0, size: 65536 } },
-        // 88-SIO: status=0x00 (bit0=rx-NOT-ready), data=0x01
-        { slot: 2, card: 'serial',   params: { data_port: 0x01, status_port: 0x00, status_rx_invert: true } },
+        // 88-SIO: status=0x00 (bit0=rx-NOT-ready), data=0x01; seven_bit strips bit7 on TX (BASIC tokenizer sets it)
+        { slot: 2, card: 'serial',   params: { data_port: 0x01, status_port: 0x00, status_rx_invert: true, seven_bit: true } },
       ],
     }),
     binaryUrl: '/roms/8kbas.bin',

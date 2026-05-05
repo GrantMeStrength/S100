@@ -11,8 +11,9 @@ use crate::card::S100Card;
 ///   rx_status_port    — IN returns RX status (defaults to status_port = combined register)
 ///   status_rx_bit     — which bit indicates "RX data available" (default 0)
 ///   status_tx_bit     — which bit indicates "TX buffer empty" (default 1)
-///   status_rx_invert  — if true, bit is CLEARED when data ready (active-low, e.g. SSM AIO)
+///   status_rx_invert  — if true, bit is CLEARED when data ready (active-low, e.g. 88-SIO)
 ///   status_tx_invert  — if true, bit is SET when TX busy instead of when TX ready
+///   seven_bit         — if true, strip bit 7 from all TX bytes (7-bit ASCII, e.g. 88-SIO)
 pub struct SerialCard {
     name: String,
     pub data_port: u8,
@@ -24,6 +25,7 @@ pub struct SerialCard {
     pub status_tx_bit: u8,
     pub status_rx_invert: bool,
     pub status_tx_invert: bool,
+    pub seven_bit: bool,
     pub rx_buf: VecDeque<u8>,
     pub tx_buf: VecDeque<u8>,
 }
@@ -41,6 +43,7 @@ impl SerialCard {
             status_tx_bit: 1,
             status_rx_invert: false,
             status_tx_invert: false,
+            seven_bit: false,
             rx_buf: VecDeque::new(),
             tx_buf: VecDeque::new(),
         }
@@ -64,6 +67,7 @@ impl SerialCard {
             status_tx_bit,
             status_rx_invert,
             status_tx_invert,
+            seven_bit: false,
             rx_buf: VecDeque::new(),
             tx_buf: VecDeque::new(),
         }
@@ -122,7 +126,8 @@ impl S100Card for SerialCard {
 
     fn io_write(&mut self, port: u8, data: u8) {
         if port == self.tx_port {
-            self.tx_buf.push_back(data);
+            let byte = if self.seven_bit { data & 0x7F } else { data };
+            self.tx_buf.push_back(byte);
         }
         // Writes to status/control port are ignored (init commands accepted silently)
     }
