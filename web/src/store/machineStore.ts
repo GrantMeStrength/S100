@@ -337,8 +337,8 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     }),
     cpm: true,
     cpmBootRom: IMSAI_BOOT_ROM,
-    cpmDiskUrl: '/IMSAICPM22.dsk',
-    cpmDiskLabel: 'IMSAICPM22.dsk',
+    cpmDiskUrl: '/CPM22.dsk',
+    cpmDiskLabel: 'CPM22.dsk',
     cpmBootVector: 'C3 00 FF',
   },
   {
@@ -461,6 +461,11 @@ export interface MachineStore {
   // Disk status (label or null for each of the 4 drives)
   diskStatus: (string | null)[];
 
+  // Active boot ROM and disk for the current CP/M preset (used by reset())
+  activeBootRom: Uint8Array | null;
+  activeDiskUrl: string | null;
+  activeDiskLabel: string | null;
+
   // Actions
   initWasm: () => Promise<void>;
   loadMachine: (json: string) => void;
@@ -509,6 +514,9 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   actions: defaultParsed.actions,
   actionsApplied: false,
   diskStatus: [null, null, null, null],
+  activeBootRom: null,
+  activeDiskUrl: null,
+  activeDiskLabel: null,
 
   initWasm: async () => {
     try {
@@ -563,6 +571,9 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
         traceEntries: [],
         traceCursor: 0,
         diskStatus: ['AltairCPM22.dsk', null, null, null],
+        activeBootRom: ALTAIR_BOOT_ROM,
+        activeDiskUrl: '/AltairCPM22.dsk',
+        activeDiskLabel: 'AltairCPM22.dsk',
         error: null,
         running: true,
         actionsApplied: true,
@@ -614,17 +625,23 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       wasm.loadMachine(machineJson);
 
       if (preset.cpm) {
-        const bootRom  = preset.cpmBootRom  ?? ALTAIR_BOOT_ROM;
-        const diskUrl  = preset.cpmDiskUrl  ?? '/AltairCPM22.dsk';
+        const bootRom   = preset.cpmBootRom  ?? ALTAIR_BOOT_ROM;
+        const diskUrl   = preset.cpmDiskUrl  ?? '/AltairCPM22.dsk';
         const diskLabel = preset.cpmDiskLabel ?? 'AltairCPM22.dsk';
         wasm.loadBinary(0xFF00, bootRom);
         const resp = await fetch(diskUrl);
         if (!resp.ok) throw new Error(`Failed to fetch ${diskUrl}: ${resp.status}`);
         const buf = await resp.arrayBuffer();
         wasm.insertDisk(0, new Uint8Array(buf));
-        set({ machineJson, mode: 'cpm', diskStatus: [diskLabel, null, null, null] });
+        set({
+          machineJson, mode: 'cpm',
+          diskStatus: [diskLabel, null, null, null],
+          activeBootRom: bootRom,
+          activeDiskUrl: diskUrl,
+          activeDiskLabel: diskLabel,
+        });
       } else {
-        set({ machineJson, mode: 'demo' });
+        set({ machineJson, mode: 'demo', activeBootRom: null, activeDiskUrl: null, activeDiskLabel: null });
       }
     } catch (e) {
       set({ error: String(e) });
@@ -648,12 +665,12 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   stop: () => set({ running: false }),
 
   reset: () => {
-    const { mode, actions } = get();
+    const { mode, actions, activeBootRom } = get();
     wasm.reset();
     // CP/M BIOS lives near 0xFF00 and may have overwritten our boot ROM — re-inject it.
     // Also re-apply toggle actions so the reset vector still points to the boot ROM.
     if (mode === 'cpm') {
-      wasm.loadBinary(0xFF00, ALTAIR_BOOT_ROM);
+      wasm.loadBinary(0xFF00, activeBootRom ?? ALTAIR_BOOT_ROM);
       for (const action of actions) {
         if (action.type === 'toggle') applyToggleEntries(action.params.entries);
       }
@@ -760,7 +777,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     // Restore CP/M boot state (same as cold reboot)
     const newMode = previousMode === 'cpm' ? 'cpm' : 'demo';
     if (previousMode === 'cpm') {
-      wasm.loadBinary(0xFF00, ALTAIR_BOOT_ROM);
+      wasm.loadBinary(0xFF00, state.activeBootRom ?? ALTAIR_BOOT_ROM);
       for (const action of state.actions) {
         if (action.type === 'toggle') applyToggleEntries(action.params.entries);
       }

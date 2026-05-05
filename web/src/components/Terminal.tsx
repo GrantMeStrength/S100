@@ -94,7 +94,9 @@ export function Terminal() {
     if (key === 'Enter') {
       sendInput('\r');
     } else if (key === 'Backspace' || key === 'Delete') {
-      sendInput('\x7f');
+      // CP/M 2.2: 0x08 (^H) echoes BS-SP-BS for a clean visual erase.
+      // 0x7F (RUBOUT) echoes the deleted character back, causing visual duplication.
+      sendInput('\x08');
     } else if (key === 'ArrowUp') {
       sendInput('\x1b[A');
     } else if (key === 'ArrowDown') {
