@@ -286,6 +286,10 @@ export interface SystemPreset {
   cpm?: boolean;
   /** Boot ROM to inject at 0xFF00 when cpm is true. Defaults to ALTAIR_BOOT_ROM. */
   cpmBootRom?: Uint8Array;
+  /** URL to a binary ROM image to load instead of cpmBootRom. Fetched at preset load time. */
+  cpmBootRomUrl?: string;
+  /** Address to inject the boot ROM at. Defaults to 0xFF00. */
+  cpmBootRomAddr?: number;
   /** Disk image URL to auto-mount in drive A when cpm is true. Defaults to '/AltairCPM22.dsk'. */
   cpmDiskUrl?: string;
   /** Display name for the auto-mounted disk. Defaults to 'AltairCPM22.dsk'. */
@@ -340,6 +344,35 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     cpmDiskUrl: '/CPM22.dsk',
     cpmDiskLabel: 'CPM22.dsk',
     cpmBootVector: 'C3 00 FF',
+  },
+  {
+    // IMSAI 8080 with the real MPU-A monitor ROM (bhall66/IMSAI-8080, MIT licence).
+    // Uses the FIF FDC abstraction (port 0xFD + disk descriptor) instead of a real
+    // WD1793.  The ROM lives at 0xD800; console on 8251 USART ports 0x02/0x03.
+    // Disk image: system60.dsk — CP/M 2.2 B03 for 60K, from bhall66/IMSAI-8080.
+    id: 'imsai_fif',
+    label: 'IMSAI 8080 — CP/M 2.2 (MPU-A ROM)',
+    machine: JSON.stringify({
+      name: 'IMSAI 8080 (MPU-A ROM)',
+      slots: [
+        { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
+        { slot: 1, card: 'ram',      params: { base: 0, size: 65536 } },
+        // 8251 USART console: data 0x02, status 0x03 (bit0=TxRDY, bit1=RxRDY)
+        { slot: 2, card: 'serial',   params: { data_port: 0x02, status_port: 0x03, status_rx_bit: 1, status_tx_bit: 0 } },
+        // FIF FDC: single port 0xFD with disk-descriptor DMA protocol
+        // IBM 3740 SSSD format: 77 tracks × 26 sectors × 128 bytes = 256,256 bytes flat
+        { slot: 3, card: 'fdc_fif',  params: { tracks: 77, sectors: 26, sector_size: 128 } },
+      ],
+      // JMP 0xD800 at reset vector — ROM runs on power-up and after every reset
+      actions: [
+        { id: 'imsai-fif-vector', type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 D8' }] } },
+      ],
+    }),
+    cpm: true,
+    cpmBootRomUrl: '/imsai-mpu-a.bin',
+    cpmBootRomAddr: 0xD800,
+    cpmDiskUrl: '/IMSAICPM60.dsk',
+    cpmDiskLabel: 'IMSAICPM60.dsk',
   },
   {
     id: 'memon80',
@@ -463,6 +496,7 @@ export interface MachineStore {
 
   // Active boot ROM and disk for the current CP/M preset (used by reset())
   activeBootRom: Uint8Array | null;
+  activeBootRomAddr: number;
   activeDiskUrl: string | null;
   activeDiskLabel: string | null;
 
@@ -515,6 +549,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   actionsApplied: false,
   diskStatus: [null, null, null, null],
   activeBootRom: null,
+  activeBootRomAddr: 0xFF00,
   activeDiskUrl: null,
   activeDiskLabel: null,
 
@@ -572,6 +607,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
         traceCursor: 0,
         diskStatus: ['AltairCPM22.dsk', null, null, null],
         activeBootRom: ALTAIR_BOOT_ROM,
+        activeBootRomAddr: 0xFF00,
         activeDiskUrl: '/AltairCPM22.dsk',
         activeDiskLabel: 'AltairCPM22.dsk',
         error: null,
@@ -625,10 +661,17 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       wasm.loadMachine(machineJson);
 
       if (preset.cpm) {
-        const bootRom   = preset.cpmBootRom  ?? ALTAIR_BOOT_ROM;
-        const diskUrl   = preset.cpmDiskUrl  ?? '/AltairCPM22.dsk';
-        const diskLabel = preset.cpmDiskLabel ?? 'AltairCPM22.dsk';
-        wasm.loadBinary(0xFF00, bootRom);
+        // Resolve boot ROM — from URL, inline bytes, or Altair default
+        let bootRom: Uint8Array = preset.cpmBootRom ?? ALTAIR_BOOT_ROM;
+        if (preset.cpmBootRomUrl) {
+          const romResp = await fetch(preset.cpmBootRomUrl);
+          if (!romResp.ok) throw new Error(`Failed to fetch boot ROM ${preset.cpmBootRomUrl}: ${romResp.status}`);
+          bootRom = new Uint8Array(await romResp.arrayBuffer());
+        }
+        const bootRomAddr = preset.cpmBootRomAddr  ?? 0xFF00;
+        const diskUrl     = preset.cpmDiskUrl  ?? '/AltairCPM22.dsk';
+        const diskLabel   = preset.cpmDiskLabel ?? 'AltairCPM22.dsk';
+        wasm.loadBinary(bootRomAddr, bootRom);
         const resp = await fetch(diskUrl);
         if (!resp.ok) throw new Error(`Failed to fetch ${diskUrl}: ${resp.status}`);
         const buf = await resp.arrayBuffer();
@@ -637,11 +680,12 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
           machineJson, mode: 'cpm',
           diskStatus: [diskLabel, null, null, null],
           activeBootRom: bootRom,
+          activeBootRomAddr: bootRomAddr,
           activeDiskUrl: diskUrl,
           activeDiskLabel: diskLabel,
         });
       } else {
-        set({ machineJson, mode: 'demo', activeBootRom: null, activeDiskUrl: null, activeDiskLabel: null });
+        set({ machineJson, mode: 'demo', activeBootRom: null, activeBootRomAddr: 0xFF00, activeDiskUrl: null, activeDiskLabel: null });
       }
     } catch (e) {
       set({ error: String(e) });
@@ -665,12 +709,12 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   stop: () => set({ running: false }),
 
   reset: () => {
-    const { mode, actions, activeBootRom } = get();
+    const { mode, actions, activeBootRom, activeBootRomAddr } = get();
     wasm.reset();
     // CP/M BIOS lives near 0xFF00 and may have overwritten our boot ROM — re-inject it.
     // Also re-apply toggle actions so the reset vector still points to the boot ROM.
     if (mode === 'cpm') {
-      wasm.loadBinary(0xFF00, activeBootRom ?? ALTAIR_BOOT_ROM);
+      wasm.loadBinary(activeBootRomAddr ?? 0xFF00, activeBootRom ?? ALTAIR_BOOT_ROM);
       for (const action of actions) {
         if (action.type === 'toggle') applyToggleEntries(action.params.entries);
       }
@@ -777,7 +821,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     // Restore CP/M boot state (same as cold reboot)
     const newMode = previousMode === 'cpm' ? 'cpm' : 'demo';
     if (previousMode === 'cpm') {
-      wasm.loadBinary(0xFF00, state.activeBootRom ?? ALTAIR_BOOT_ROM);
+      wasm.loadBinary(state.activeBootRomAddr ?? 0xFF00, state.activeBootRom ?? ALTAIR_BOOT_ROM);
       for (const action of state.actions) {
         if (action.type === 'toggle') applyToggleEntries(action.params.entries);
       }

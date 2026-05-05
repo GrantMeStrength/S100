@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::bus::Bus;
+use crate::bus::{Bus, BusInterface};
 use crate::cards::{
     boot_rom::BootRomCard,
     dazzler::DazzlerCard,
     dcdd::Dcdd88Card,
     fdc::FloppyController,
+    fdc_fif::FifCard,
     fdc_wd1793::WD1793Card,
     ram::RamCard,
     rom::RomCard,
@@ -80,6 +81,7 @@ pub struct Machine {
     pub bus: Bus,
     pub serial_idx: Option<usize>,
     pub fdc_idx: Option<usize>,
+    pub fif_idx: Option<usize>,
     pub dazzler_idx: Option<usize>,
     /// IMSAI Programmed Output latch — captures the last byte written to port 0xFF.
     pub programmed_output: u8,
@@ -93,6 +95,7 @@ impl Machine {
             bus: Bus::new(),
             serial_idx: None,
             fdc_idx: None,
+            fif_idx: None,
             dazzler_idx: None,
             programmed_output: 0,
         }
@@ -107,6 +110,7 @@ impl Machine {
         self.bus = Bus::new();
         self.serial_idx = None;
         self.fdc_idx = None;
+        self.fif_idx = None;
         self.dazzler_idx = None;
         self.programmed_output = 0;
 
@@ -214,6 +218,19 @@ impl Machine {
                     )));
                 }
 
+                "fdc_fif" => {
+                    let tracks = slot.params.get("tracks")
+                        .and_then(Value::as_u64).unwrap_or(77) as u8;
+                    let sectors = slot.params.get("sectors")
+                        .and_then(Value::as_u64).unwrap_or(26) as u8;
+                    let sector_size = slot.params.get("sector_size")
+                        .and_then(Value::as_u64).unwrap_or(128) as usize;
+                    self.fif_idx = Some(self.bus.cards.len());
+                    self.bus.add_card(Box::new(FifCard::new(
+                        "FIF-FDC", tracks, sectors, sector_size,
+                    )));
+                }
+
                 other => {
                     return Err(format!("unknown card type: {other}"));
                 }
@@ -261,9 +278,103 @@ impl Machine {
                 }
             }
 
+            // FIF FDC DMA: if the FIF card received an execute command, perform the
+            // DMA transfer now (between CPU steps) so the next cpu.step() sees the
+            // result byte already written to RAM.
+            if let Some(fif_idx) = self.fif_idx {
+                let pending = self.bus.cards.get(fif_idx)
+                    .and_then(|c| c.as_any().downcast_ref::<FifCard>())
+                    .map_or(false, |f| f.pending_execute);
+
+                if pending {
+                    self.execute_fif_dma(fif_idx);
+                }
+            }
+
             self.bus.step_cards();
         }
         elapsed
+    }
+
+    /// Execute a pending FIF DMA transfer.
+    /// Uses std::mem::replace to temporarily extract the FIF card from the bus so
+    /// we can call bus.mem_read/write (which need &mut Bus) while also holding the
+    /// card data.
+    fn execute_fif_dma(&mut self, fif_idx: usize) {
+        // Extract FIF card from bus, leaving a no-op placeholder.
+        let placeholder: Box<dyn crate::card::S100Card> = Box::new(DummyCard);
+        let mut fif_box = std::mem::replace(&mut self.bus.cards[fif_idx], placeholder);
+        let fif = match fif_box.as_any_mut().downcast_mut::<FifCard>() {
+            Some(f) => f,
+            None => {
+                self.bus.cards[fif_idx] = fif_box;
+                return;
+            }
+        };
+
+        fif.pending_execute = false;
+
+        let desc_addr = match fif.desc_addr {
+            Some(a) => a,
+            None => {
+                self.bus.cards[fif_idx] = fif_box;
+                return;
+            }
+        };
+
+        // Read 7-byte descriptor from RAM.
+        let desc: [u8; 7] = core::array::from_fn(|i| {
+            <Bus as BusInterface>::mem_read(&mut self.bus, desc_addr.wrapping_add(i as u16))
+        });
+
+        let cmd       = desc[0];
+        let op        = cmd >> 4;          // 2=read, 1=write
+        let drive_bits = cmd & 0x0F;
+        let track     = desc[3];
+        let sector    = desc[4];
+        let dma_addr  = u16::from_le_bytes([desc[5], desc[6]]);
+
+        let drive_idx = FifCard::decode_drive(drive_bits).unwrap_or(0);
+
+        let result: u8 = match op {
+            2 => {
+                // Read sector → copy to DMA buffer in RAM
+                match fif.execute_read(track, sector, drive_idx) {
+                    Some(data) => {
+                        for (i, &byte) in data.iter().enumerate() {
+                            <Bus as BusInterface>::mem_write(
+                                &mut self.bus,
+                                dma_addr.wrapping_add(i as u16),
+                                byte,
+                            );
+                        }
+                        1
+                    }
+                    None => 2,
+                }
+            }
+            1 => {
+                // Write sector — read data from DMA buffer in RAM first
+                let size = fif.sector_size;
+                let data: Vec<u8> = (0..size as u16)
+                    .map(|i| <Bus as BusInterface>::mem_read(
+                        &mut self.bus, dma_addr.wrapping_add(i),
+                    ))
+                    .collect();
+                if fif.execute_write(track, sector, drive_idx, &data) { 1 } else { 2 }
+            }
+            _ => 0xFF,
+        };
+
+        // Write result code to desc[1] so the polling loop sees completion.
+        <Bus as BusInterface>::mem_write(
+            &mut self.bus,
+            desc_addr.wrapping_add(1),
+            result,
+        );
+
+        // Put the FIF card back.
+        self.bus.cards[fif_idx] = fif_box;
     }
 
     pub fn reset(&mut self) {
@@ -340,6 +451,16 @@ impl Machine {
     // ── Disk I/O ───────────────────────────────────────────────────────────
 
     pub fn insert_disk(&mut self, drive: u8, data: Vec<u8>) {
+        // FIF FDC
+        if let Some(idx) = self.fif_idx {
+            if let Some(card) = self.bus.cards.get_mut(idx) {
+                if let Some(fif) = card.as_any_mut().downcast_mut::<FifCard>() {
+                    fif.insert_disk(drive as usize, data);
+                    return;
+                }
+            }
+        }
+        // Legacy / WD1793 FDC
         if let Some(idx) = self.fdc_idx {
             if let Some(card) = self.bus.cards.get_mut(idx) {
                 if let Some(fdc) = card.as_any_mut().downcast_mut::<FloppyController>() {
@@ -358,6 +479,15 @@ impl Machine {
     }
 
     pub fn get_disk_data(&self, drive: u8) -> Option<Vec<u8>> {
+        // FIF FDC
+        if let Some(idx) = self.fif_idx {
+            if let Some(card) = self.bus.cards.get(idx) {
+                if let Some(fif) = card.as_any().downcast_ref::<FifCard>() {
+                    return fif.drives[drive as usize & 3].clone();
+                }
+            }
+        }
+        // Legacy / WD1793 FDC
         if let Some(idx) = self.fdc_idx {
             if let Some(card) = self.bus.cards.get(idx) {
                 if let Some(fdc) = card.as_any().downcast_ref::<FloppyController>() {
@@ -415,6 +545,21 @@ impl Machine {
         }
     }
 
+}
+
+// ── DummyCard — placeholder while FIF is extracted for DMA ───────────────────
+
+struct DummyCard;
+
+impl crate::card::S100Card for DummyCard {
+    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn name(&self) -> &str { "_dummy" }
+    fn reset(&mut self) {}
+    fn memory_read(&mut self, _: u16) -> Option<u8> { None }
+    fn memory_write(&mut self, _: u16, _: u8) {}
+    fn io_read(&mut self, _: u8) -> Option<u8> { None }
+    fn io_write(&mut self, _: u8, _: u8) {}
 }
 
 // ── Minimal base64 decoder ────────────────────────────────────────────────────

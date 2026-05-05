@@ -1,5 +1,15 @@
 // MITS 88-DCDD floppy disk controller emulation
 // Hard-sector format: 77 tracks × 32 sectors × 137 bytes = 337,568 bytes
+//
+// Onboard bootstrap ROM: The real 88-DCDD card carried a 256-byte PROM that was
+// mapped at 0xFF00–0xFFFF (addresses 0xFF00–0xFF4C are used; the rest is padding).
+// On power-up the 8080 reset vector (0x0000) was toggled to JMP 0xFF00 via the
+// Altair front panel, then RUN was pressed to execute the ROM.  The ROM loads
+// track 0 sector 0 (128 bytes) to 0x0000 and sector 2 (128 bytes) to 0x0080,
+// then jumps to 0x0000 where the disk's own bootstrap continues.
+// In this emulator the ROM bytes are injected into RAM at 0xFF00 by the frontend
+// (see ALTAIR_BOOT_ROM in machineStore.ts) — the card itself has no ROM storage.
+//
 // Port protocol:
 //   0x08 IN  = drive status (active-low bit fields)
 //   0x08 OUT = drive select (bit7=deselect, bits3-0=drive number)
