@@ -71,6 +71,7 @@ impl Dcdd88Card {
         let mut active: u8 = 0;
         if loaded { active |= 0x80; }  // R: data ready when head loaded
         if on_t0  { active |= 0x40; }  // Z: on track 0
+        active |= 0x08;                // Motor: always running when disk selected
         if loaded { active |= 0x04; }  // H: head loaded
         active |= 0x02;                // M: movement always allowed
         active |= 0x01;                // W: write always ready

@@ -16,6 +16,7 @@ export default function App() {
   const start       = useMachineStore(s => s.start);
   const stop        = useMachineStore(s => s.stop);
   const reset       = useMachineStore(s => s.reset);
+  const warmReset   = useMachineStore(s => s.warmReset);
   const loadPreset  = useMachineStore(s => s.loadPreset);
   const tick        = useMachineStore(s => s.tick);
   const running     = useMachineStore(s => s.running);
@@ -106,7 +107,7 @@ export default function App() {
           <CtrlBtn
             onClick={() => loadPreset(selectedPreset)}
             color="#79c0ff"
-            disabled={!wasmReady || running}
+            disabled={!wasmReady}
           >
             ⚙ Load System
           </CtrlBtn>
@@ -125,7 +126,14 @@ export default function App() {
               <CtrlBtn onClick={() => { stop(); tick(1); }} disabled={!wasmReady || running} color="#8b949e">
                 ⏭ Step
               </CtrlBtn>
-              <CtrlBtn onClick={reset} disabled={!wasmReady}>⟳ Reset</CtrlBtn>
+              {mode === 'cpm' && (
+                <CtrlBtn onClick={warmReset} disabled={!wasmReady} color="#d29922" title="Warm reset — restarts CP/M via its warm boot vector (0x0000), disks unchanged">
+                  ↺ Reset
+                </CtrlBtn>
+              )}
+              <CtrlBtn onClick={reset} disabled={!wasmReady} title="Cold reboot — re-injects boot ROM and reboots from disk, disks unchanged">
+                ⟳ Reboot
+              </CtrlBtn>
             </>
           )}
         </div>
@@ -269,17 +277,19 @@ function Divider() {
 }
 
 function CtrlBtn({
-  onClick, children, color = '#c9d1d9', disabled = false,
+  onClick, children, color = '#c9d1d9', disabled = false, title,
 }: {
   onClick: () => void;
   children: React.ReactNode;
   color?: string;
   disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      title={title}
       style={{
         background: '#21262d',
         border: '1px solid #30363d',

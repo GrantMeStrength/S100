@@ -5,7 +5,7 @@ import { getCardType, CARD_TYPES } from '../config/cardTypes';
 import { CardConfigModal } from './CardConfigModal';
 import { ToggleConfigModal } from './ToggleConfigModal';
 
-const NUM_SLOTS = 16;
+const NUM_SLOTS = 8;
 
 const iconBtn: React.CSSProperties = {
   background: 'none',
