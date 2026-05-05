@@ -14,6 +14,14 @@ export interface RomImagePreset {
 
 export const ROM_IMAGES: RomImagePreset[] = [
   {
+    id: 'altair_basic_8k',
+    label: 'MITS Altair BASIC 8K (Rev 3.2)',
+    url: '/roms/8kbas.bin',
+    base: 0xC000,
+    size: 8192,
+    description: 'MITS 8K BASIC v3.2 for the Altair 8800. Loads at 0xC000–0xDFFF; a copy loop in RAM transfers it to 0x0000 on boot. Uses 88-SIO ports (data 0x01, status 0x00) with 7-bit output.',
+  },
+  {
     id: 'memon80',
     label: 'Memon/80 v3.06 (M. Eberhard / JAIR)',
     url: '/roms/memon80.bin',

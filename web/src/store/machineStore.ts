@@ -297,7 +297,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
       slots: [
         { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
         // ROM card holds BASIC at 0xC000–0xDFFF; data injected from romUrl at load time
-        { slot: 1, card: 'rom',      params: { base: 0xC000 } },
+        { slot: 1, card: 'rom',      params: { base: 0xC000, size: 8192, rom_image: 'altair_basic_8k' } },
         { slot: 2, card: 'ram',      params: { base: 0, size: 65536 } },
         // 88-SIO: status=0x00 (bit0=rx-NOT-ready active-low), data=0x01
         { slot: 3, card: 'serial',   params: { data_port: 0x01, status_port: 0x00, status_rx_invert: true, seven_bit: true } },
