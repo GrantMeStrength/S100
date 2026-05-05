@@ -284,23 +284,33 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
   },
   {
     // MITS Altair BASIC Rev. 4.0 (Eight-K Version) — copyright 1976 by MITS Inc.
-    // Loads at 0x0000; uses 88-SIO: status on port 0x00, data on port 0x01.
-    // 88-SIO RX status is active-low: bit 0 CLEAR = data ready (status_rx_invert).
-    // At startup: answer MEMORY SIZE? with <Enter> and TERMINAL WIDTH? with <Enter>.
+    // ROM card holds BASIC at 0xC000. On Run, the toggle injects a copy loop at 0xFF00
+    // that copies the 8 KB from ROM (0xC000) into RAM (0x0000), then jumps to 0x0000.
+    // Uses 88-SIO: status on port 0x00 (active-low RX), data on port 0x01.
+    // seven_bit strips bit 7 from TX bytes — BASIC sets bit 7 on tokenised keyword initials.
+    // At startup: MEMORY SIZE? → Enter, TERMINAL WIDTH? → Enter, WANT SIN-COS-TAN-ATN? → N
     id: 'altair_basic',
     label: 'Altair 8800 — MITS BASIC 8K',
+    romUrl: '/roms/8kbas.bin',
     machine: JSON.stringify({
       name: 'Altair 8800 BASIC',
       slots: [
         { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
-        { slot: 1, card: 'ram',      params: { base: 0, size: 65536 } },
-        // 88-SIO: status=0x00 (bit0=rx-NOT-ready), data=0x01; seven_bit strips bit7 on TX (BASIC tokenizer sets it)
-        { slot: 2, card: 'serial',   params: { data_port: 0x01, status_port: 0x00, status_rx_invert: true, seven_bit: true } },
+        // ROM card holds BASIC at 0xC000–0xDFFF; data injected from romUrl at load time
+        { slot: 1, card: 'rom',      params: { base: 0xC000 } },
+        { slot: 2, card: 'ram',      params: { base: 0, size: 65536 } },
+        // 88-SIO: status=0x00 (bit0=rx-NOT-ready active-low), data=0x01
+        { slot: 3, card: 'serial',   params: { data_port: 0x01, status_port: 0x00, status_rx_invert: true, seven_bit: true } },
+      ],
+      // On Run: write copy loop at 0xFF00 and JMP 0xFF00 at reset vector 0x0000.
+      // Copy loop: LXI H,C000 / LXI D,0000 / LXI B,2000 / [MOV A,M; STAX D; INX H; INX D; DCX B; MOV A,B; ORA C; JNZ loop] / JMP 0000
+      actions: [
+        { id: 'basic-boot', type: 'toggle', params: { entries: [
+          { addr: '0000', bytes: 'C3 00 FF' },
+          { addr: 'FF00', bytes: '21 00 C0 11 00 00 01 00 20 7E 12 23 13 0B 78 B1 C2 09 FF C3 00 00' },
+        ] } },
       ],
     }),
-    binaryUrl: '/roms/8kbas.bin',
-    binaryLoadAddr: 0x0000,
-    startupPc: 0x0000,
   },
   {
     // IMSAI 8080 with the real MPU-A monitor ROM (bhall66/IMSAI-8080, MIT licence).
@@ -673,13 +683,13 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   reset: () => {
     const { mode, actions, activeBootRom, activeBootRomAddr } = get();
     wasm.reset();
-    // CP/M BIOS lives near 0xFF00 and may have overwritten our boot ROM — re-inject it.
-    // Also re-apply toggle actions so the reset vector still points to the boot ROM.
+    // CP/M: re-inject the boot ROM (BIOS may have overwritten 0xFF00 area).
     if (mode === 'cpm') {
       wasm.loadBinary(activeBootRomAddr ?? 0xFF00, activeBootRom ?? ALTAIR_BOOT_ROM);
-      for (const action of actions) {
-        if (action.type === 'toggle') applyToggleEntries(action.params.entries);
-      }
+    }
+    // Re-apply toggle actions for any mode — boot vectors live in RAM and get wiped on reset.
+    for (const action of actions) {
+      if (action.type === 'toggle') applyToggleEntries(action.params.entries);
     }
     // Auto-resume so the reboot runs without manual intervention.
     set({ terminalOutput: '', traceEntries: [], traceCursor: 0, running: true });
