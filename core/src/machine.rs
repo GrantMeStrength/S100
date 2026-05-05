@@ -4,6 +4,7 @@ use serde_json::Value;
 use crate::bus::Bus;
 use crate::cards::{
     boot_rom::BootRomCard,
+    dazzler::DazzlerCard,
     dcdd::Dcdd88Card,
     fdc::FloppyController,
     ram::RamCard,
@@ -78,6 +79,7 @@ pub struct Machine {
     pub bus: Bus,
     pub serial_idx: Option<usize>,
     pub fdc_idx: Option<usize>,
+    pub dazzler_idx: Option<usize>,
     /// IMSAI Programmed Output latch — captures the last byte written to port 0xFF.
     pub programmed_output: u8,
 }
@@ -90,6 +92,7 @@ impl Machine {
             bus: Bus::new(),
             serial_idx: None,
             fdc_idx: None,
+            dazzler_idx: None,
             programmed_output: 0,
         }
     }
@@ -103,6 +106,7 @@ impl Machine {
         self.bus = Bus::new();
         self.serial_idx = None;
         self.fdc_idx = None;
+        self.dazzler_idx = None;
         self.programmed_output = 0;
 
         // Validate: exactly one CPU card
@@ -185,6 +189,11 @@ impl Machine {
                 "sio_88_2sio" => {
                     self.serial_idx = Some(self.bus.cards.len());
                     self.bus.add_card(Box::new(Sio88Card::new("88-2SIO")));
+                }
+
+                "dazzler" => {
+                    self.dazzler_idx = Some(self.bus.cards.len());
+                    self.bus.add_card(Box::new(DazzlerCard::new("Dazzler")));
                 }
 
                 other => {
@@ -338,6 +347,47 @@ impl Machine {
             }
         }
         None
+    }
+
+    /// Render the Dazzler frame buffer to RGBA pixels.
+    /// Returns [width_lo, width_hi, height_lo, height_hi, ...rgba_bytes], or empty if
+    /// no Dazzler card is present or the display is disabled.
+    pub fn get_dazzler_frame(&mut self) -> Vec<u8> {
+        let idx = match self.dazzler_idx { Some(i) => i, None => return vec![] };
+
+        // Collect display parameters without holding a long borrow
+        let (enabled, start, size) = {
+            let d = match self.bus.cards.get(idx)
+                .and_then(|c| c.as_any().downcast_ref::<DazzlerCard>()) {
+                Some(d) => d,
+                None => return vec![],
+            };
+            (d.enabled(), d.frame_buffer_start(), d.frame_buffer_size())
+        };
+
+        if !enabled { return vec![]; }
+
+        // Passive peek — RamCard.memory_read() has no side effects
+        let buf: Vec<u8> = (0..size)
+            .map(|i| self.read_memory(start.wrapping_add(i as u16)))
+            .collect();
+
+        // Re-borrow to render (previous borrow is gone)
+        let d = match self.bus.cards.get(idx)
+            .and_then(|c| c.as_any().downcast_ref::<DazzlerCard>()) {
+            Some(d) => d,
+            None => return vec![],
+        };
+
+        match d.render_from_buf(&buf) {
+            Some(rgba) => {
+                let (w, h) = d.display_dims();
+                let mut result = vec![w as u8, (w >> 8) as u8, h as u8, (h >> 8) as u8];
+                result.extend_from_slice(&rgba);
+                result
+            }
+            None => vec![],
+        }
     }
 
 }

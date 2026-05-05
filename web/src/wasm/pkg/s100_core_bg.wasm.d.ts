@@ -2,6 +2,7 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const __wbg_emulator_free: (a: number, b: number) => void;
+export const emulator_getDazzlerFrame: (a: number) => [number, number];
 export const emulator_getDiskData: (a: number, b: number) => [number, number];
 export const emulator_getSerialOutput: (a: number) => [number, number];
 export const emulator_getState: (a: number) => [number, number];

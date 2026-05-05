@@ -5,6 +5,12 @@ export class Emulator {
     free(): void;
     [Symbol.dispose](): void;
     /**
+     * Render the Dazzler frame buffer to RGBA pixels.
+     * Returns [width_lo, width_hi, height_lo, height_hi, ...rgba_bytes],
+     * or an empty array if no Dazzler card is present or the display is disabled.
+     */
+    getDazzlerFrame(): Uint8Array;
+    /**
      * Retrieve the current contents of a disk drive image (for saving).
      * Returns an empty array if drive is not inserted.
      */
@@ -74,6 +80,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_emulator_free: (a: number, b: number) => void;
+    readonly emulator_getDazzlerFrame: (a: number) => [number, number];
     readonly emulator_getDiskData: (a: number, b: number) => [number, number];
     readonly emulator_getSerialOutput: (a: number) => [number, number];
     readonly emulator_getState: (a: number) => [number, number];

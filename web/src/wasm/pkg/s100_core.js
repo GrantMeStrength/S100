@@ -12,6 +12,18 @@ export class Emulator {
         wasm.__wbg_emulator_free(ptr, 0);
     }
     /**
+     * Render the Dazzler frame buffer to RGBA pixels.
+     * Returns [width_lo, width_hi, height_lo, height_hi, ...rgba_bytes],
+     * or an empty array if no Dazzler card is present or the display is disabled.
+     * @returns {Uint8Array}
+     */
+    getDazzlerFrame() {
+        const ret = wasm.emulator_getDazzlerFrame(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
      * Retrieve the current contents of a disk drive image (for saving).
      * Returns an empty array if drive is not inserted.
      * @param {number} drive

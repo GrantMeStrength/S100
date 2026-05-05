@@ -10,6 +10,7 @@ import { TraceViewer } from './components/TraceViewer';
 import { DiskManager } from './components/DiskManager';
 import { ProgrammedOutputPanel } from './components/ProgrammedOutputPanel';
 import { MemoryView } from './components/MemoryView';
+import { DazzlerDisplay } from './components/DazzlerDisplay';
 
 export default function App() {
   const initWasm    = useMachineStore(s => s.initWasm);
@@ -31,6 +32,8 @@ export default function App() {
 
   const [selectedPreset, setSelectedPreset] = useState(SYSTEM_PRESETS[1].id);
   const [rightTab, setRightTab] = useState<'trace' | 'memory'>('trace');
+
+  const hasDazzler = slots.some(s => s.card === 'dazzler');
 
   const rafRef      = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -195,6 +198,12 @@ export default function App() {
           padding: 12, gap: 12, overflow: 'hidden',
         }}>
           <Terminal />
+          {hasDazzler && (
+            <>
+              <Divider />
+              <DazzlerDisplay />
+            </>
+          )}
           <Divider />
           {/* Tab bar */}
           <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #30363d', flexShrink: 0 }}>

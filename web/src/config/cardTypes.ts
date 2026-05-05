@@ -223,6 +223,21 @@ export const CARD_TYPES: CardTypeInfo[] = [
     defaultParams: {},
     configFields: [],
   },
+  {
+    id: 'dazzler',
+    label: 'Cromemco Dazzler',
+    shortLabel: 'DAZZ',
+    color: '#1a0d2e',
+    accent: '#a855f7',
+    description: 'Cromemco Dazzler color graphics card for the S-100 bus. Generates a composite video signal from a software-defined frame buffer in system RAM. Supports four display modes: 32×32 / 64×64 color (IRGB) or 64×64 / 128×128 monochrome.',
+    ports: [
+      { range: '0x0E', direction: 'OUT', description: 'NX register — bit 7: display enable; bits 6–0: frame buffer page (start address = page × 512).' },
+      { range: '0x0F', direction: 'OUT', description: 'CC register — bit 1: X4 (high-res); bit 0: color (1 = IRGB color, 0 = B&W).' },
+      { range: '0x0E', direction: 'IN',  description: 'Status register — bit 7: vertical sync (always 0 in emulation).' },
+    ],
+    defaultParams: {},
+    configFields: [],
+  },
 ];
 
 export function getCardType(id: string): CardTypeInfo | undefined {

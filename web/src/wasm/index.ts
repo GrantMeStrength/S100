@@ -120,3 +120,7 @@ export function getDiskData(drive: number): Uint8Array {
 export function setPC(pc: number): void {
   getEmulator().setPC(pc);
 }
+
+export function getDazzlerFrame(): Uint8Array {
+  return getEmulator().getDazzlerFrame();
+}

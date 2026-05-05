@@ -120,6 +120,14 @@ impl Emulator {
     pub fn set_pc(&mut self, pc: u16) {
         self.machine.cpu.pc = pc;
     }
+
+    /// Render the Dazzler frame buffer to RGBA pixels.
+    /// Returns [width_lo, width_hi, height_lo, height_hi, ...rgba_bytes],
+    /// or an empty array if no Dazzler card is present or the display is disabled.
+    #[wasm_bindgen(js_name = getDazzlerFrame)]
+    pub fn get_dazzler_frame(&mut self) -> Vec<u8> {
+        self.machine.get_dazzler_frame()
+    }
 }
 
 #[cfg(test)]
