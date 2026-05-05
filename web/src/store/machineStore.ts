@@ -774,7 +774,8 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   // errors are caught reliably (the async wrapper cannot be caught without await).
   _reloadWithStatePreservation: (newJson: string, newSlots: SlotEntry[]) => {
     const state = get();
-    const previousMode = state.mode;
+    const previousMode    = state.mode;
+    const previousRunning = state.running;
     const previousDiskStatus = [...state.diskStatus];
 
     // Stop the RAF loop before touching WASM to eliminate any interleave.
@@ -791,14 +792,15 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     try {
       wasm.getEmulator().loadMachine(newJson);
     } catch (e) {
-      set({ error: String(e), running: false });
+      // Restore machine to its previous running state so the user isn't left stuck
+      set({ error: String(e), running: previousRunning });
       return;
     }
 
     // Re-insert saved disk images
     savedDisks.forEach((disk, i) => { if (disk) wasm.insertDisk(i, disk); });
 
-    // Restore boot state for CP/M or demo machines with toggle actions
+    // Restore boot state
     const newMode = previousMode === 'cpm' ? 'cpm' : 'demo';
     if (previousMode === 'cpm') {
       wasm.loadBinary(state.activeBootRomAddr ?? 0xFF00, state.activeBootRom ?? ALTAIR_BOOT_ROM);
@@ -820,8 +822,11 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
 
   addCard: (slotIndex, cardId, params = {}) => {
     const state = get();
+    // CPU cards are unique: a machine can only have one. When adding a CPU card,
+    // remove any existing CPU card from any slot (not just the target slot).
+    const isCpu = cardId.startsWith('cpu_');
     const newSlots: SlotEntry[] = [
-      ...state.slots.filter(s => s.slot !== slotIndex),
+      ...state.slots.filter(s => isCpu ? !s.card.startsWith('cpu_') : s.slot !== slotIndex),
       { slot: slotIndex, card: cardId, params },
     ].sort((a, b) => a.slot - b.slot);
     const json = configToJson(state.machineName, newSlots, state.actions);
@@ -830,6 +835,12 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
 
   removeCard: (slotIndex) => {
     const state = get();
+    const cardToRemove = state.slots.find(s => s.slot === slotIndex);
+    // Prevent removing the only CPU card — machine requires exactly one
+    if (cardToRemove?.card.startsWith('cpu_')) {
+      set({ error: 'Cannot remove the CPU card — swap it for a different CPU by dragging from the card library.' });
+      return;
+    }
     const newSlots = state.slots.filter(s => s.slot !== slotIndex);
     const json = configToJson(state.machineName, newSlots, state.actions);
     get()._reloadWithStatePreservation(json, newSlots);
