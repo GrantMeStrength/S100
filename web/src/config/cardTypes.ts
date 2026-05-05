@@ -118,7 +118,7 @@ const SPEED_OPTIONS = [
 export const CARD_TYPES: CardTypeInfo[] = [
   {
     id: 'boot_rom',
-    label: 'Shadow ROM (JAIR)',
+    label: 'Shadow ROM',
     shortLabel: 'BROM',
     color: '#1a1a0a',
     accent: '#b8860b',
