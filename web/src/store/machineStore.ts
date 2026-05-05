@@ -140,12 +140,16 @@ export const DEFAULT_MACHINE = JSON.stringify({
 
 export const ALTAIR_CPM_MACHINE = JSON.stringify({
   name: 'Altair 8800 CP/M 2.2',
-  startup_pc: 0xFF00,
   slots: [
     { slot: 0, card: 'cpu_8080',    params: { speed_hz: 2_000_000 } },
     { slot: 1, card: 'ram',         params: { base: 0, size: 65536 } },
     { slot: 2, card: 'sio_88_2sio' },
     { slot: 3, card: 'dcdd_88' },
+  ],
+  // Toggle in JMP 0xFF00 at the reset vector — exactly as you would on a real Altair
+  // front panel before pressing RUN to start the 88-DCDD bootstrap ROM.
+  actions: [
+    { id: 'altair-boot-vector', type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 FF' }] } },
   ],
 });
 
@@ -416,7 +420,6 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       wasm.loadMachine(ALTAIR_CPM_MACHINE);
 
       // Load MITS 88-DCDD bootstrap ROM into RAM at 0xFF00
-      // startup_pc in the machine config sets CPU PC to 0xFF00 on loadMachine
       wasm.loadBinary(0xFF00, ALTAIR_BOOT_ROM);
 
       // Fetch and insert Altair CP/M 2.2 disk image as drive A
@@ -425,9 +428,16 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       const buf = await resp.arrayBuffer();
       wasm.insertDisk(0, new Uint8Array(buf));
 
+      // Apply toggle action: writes JMP 0xFF00 at 0x0000 (front panel boot vector)
+      const { actions } = parseMachineConfig(ALTAIR_CPM_MACHINE);
+      for (const action of actions) {
+        if (action.type === 'toggle') applyToggleEntries(action.params.entries);
+      }
+
       set({
         machineJson: ALTAIR_CPM_MACHINE,
         slots: parseMachineConfig(ALTAIR_CPM_MACHINE).slots,
+        actions,
         machineName: 'Altair 8800 CP/M 2.2',
         mode: 'cpm',
         terminalOutput: '',
@@ -436,7 +446,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
         diskStatus: ['AltairCPM22.dsk', null, null, null],
         error: null,
         running: true,
-        actionsApplied: false,
+        actionsApplied: true,
       });
     } catch (e) {
       set({ error: String(e) });
