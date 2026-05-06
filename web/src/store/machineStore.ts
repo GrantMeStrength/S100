@@ -475,30 +475,22 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     }),
   },
   {
-    // Processor Technology VDM-1 video card with CUTER compatibility stubs ROM.
-    //
-    // The CUTER stubs ROM card must come BEFORE ram so it wins the first-responder
-    // race for reads from 0xC000–0xC0FF (bus returns the first card that claims
-    // the address).  CONIN uses the MITS 88-2SIO at ports 0x10/0x11.
-    //
-    // Compatible software (load via "↑ Load HEX"):
-    //   Trek-80  — standalone, no CUTER needed (start addr 0x0000)
-    //   Target, Raiders, Othello — require CUTER stubs (auto-provided)
-    //   Source: https://github.com/dhansel/VDM1/tree/main/programs
+    // Processor Technology VDM-1 video card on a standard Altair CP/M system.
+    // The VDM-1 is memory-mapped at 0xCC00 — CP/M programs that support it write
+    // directly to that address range.  For standalone VDM-1 HEX programs that need
+    // CUTER (0xC003/0xC006), add a ROM card manually via the card library and pick
+    // "CUTER Compatibility Stubs" from the ROM chip dropdown.
     id: 'altair_vdm1',
-    label: 'Altair 8800 + VDM-1 + Dazzler (Processor Technology)',
-    romUrl: '/roms/cuter_stubs.bin',
+    label: 'Altair 8800 + VDM-1 (Processor Technology)',
     cpm: true,
     machine: JSON.stringify({
-      name: 'Altair 8800 + VDM-1 + Dazzler',
+      name: 'Altair 8800 + VDM-1',
       slots: [
-        { slot: 0, card: 'rom',      params: { base: 0xC000, size: 256, rom_image: 'cuter_stubs' } },
-        { slot: 1, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
-        { slot: 2, card: 'ram',      params: { base: 0, size: 65536 } },
-        { slot: 3, card: 'sio_88_2sio' },
-        { slot: 4, card: 'dcdd_88' },
-        { slot: 5, card: 'vdm',      params: { base: 0xCC00 } },
-        { slot: 6, card: 'dazzler' },
+        { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
+        { slot: 1, card: 'ram',      params: { base: 0, size: 65536 } },
+        { slot: 2, card: 'sio_88_2sio' },
+        { slot: 3, card: 'dcdd_88' },
+        { slot: 4, card: 'vdm',      params: { base: 0xCC00 } },
       ],
       actions: [
         { id: 'altair-boot-vector', type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 FF' }] } },
