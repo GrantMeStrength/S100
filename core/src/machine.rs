@@ -4,7 +4,7 @@ use serde_json::Value;
 use crate::bus::{Bus, BusInterface};
 use crate::cards::{
     cpu_z80::Z80Card,
-    cuter::CuterStubsCard,
+    cuter::cuter_stubs_data,
     dazzler::DazzlerCard,
     dcdd::Dcdd88Card,
     fdc::FloppyController,
@@ -273,7 +273,9 @@ impl Machine {
                 }
 
                 "cuter" => {
-                    self.bus.add_card(Box::new(CuterStubsCard::new()));
+                    self.bus.add_card(Box::new(
+                        RomCard::new("CUTER-stubs", 0xC000, cuter_stubs_data())
+                    ));
                 }
 
                 "vdm" => {

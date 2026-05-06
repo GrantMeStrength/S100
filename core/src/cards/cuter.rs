@@ -1,15 +1,11 @@
-// CUTER compatibility stubs ROM for the Processor Technology VDM-1 system
+// CUTER compatibility stubs ROM data for the Processor Technology VDM-1 system.
 //
 // CUTER (Cassette User Terminal for Extended Routines) was Processor Technology's
 // monitor firmware for VDM-1-equipped Altair systems.  Many VDM-1 games and
-// utilities call three CUTER entry points:
+// utilities call these entry points:
 //
-//   0xC003  CONOUT  — write character in A to the VDM-1 display at cursor position
-//   0xC006  CONIN   — read one character from the 88-2SIO keyboard (port 0x10/0x11)
-//
-// This card provides a minimal, self-contained 256-byte ROM at 0xC000 that
-// implements those two subroutines in real 8080 machine code, together with
-// full cursor management and scrolling.
+//   0xC003  CONOUT  — write char in A to the VDM-1 display at cursor position
+//   0xC006  CONIN   — read one char from the 88-2SIO keyboard (ports 0x10/0x11)
 //
 // Cursor state is kept in two RAM bytes:
 //   0xBFF0  cursor_row  (0..15)
@@ -22,188 +18,26 @@
 //   0x0D  CR  — move cursor to column 0 on same row
 //   0x1A  ^Z  — same as FF (clear screen)
 //
-// This ROM must be placed before the RAM card in the bus card list so that it
-// wins the first-responder race for mem_read on addresses 0xC000–0xC0FF.
+// This data is loaded into a RomCard at 0xC000. The RomCard must be placed
+// before the RAM card in the bus list so it wins the first-responder race
+// for mem_read on addresses 0xC000–0xC0FF.
 
-use std::any::Any;
-use crate::card::S100Card;
-
-pub struct CuterStubsCard {
-    name: String,
-}
-
-impl CuterStubsCard {
-    pub fn new() -> Self {
-        CuterStubsCard { name: "CUTER-stubs".to_owned() }
-    }
-}
-
-/// The 256-byte CUTER stubs ROM image, assembled for the Intel 8080.
+/// Returns the 256-byte CUTER stubs ROM image assembled for the Intel 8080.
 ///
-/// Memory map inside the ROM (all addresses relative to base 0xC000):
-///   0x00  Cold-start stub (RET — programs shouldn't call this)
+/// Memory map inside the ROM (all offsets relative to base 0xC000):
+///   0x00  Cold-start stub (RET)
 ///   0x03  CONOUT entry → JMP 0xC020
 ///   0x06  CONIN  entry → JMP 0xC0E0
-///   0x09–0x1F  RET pads for other possible CUTER entry points
+///   0x09–0x1F  RET pads
 ///   0x20–0xBB  CONOUT implementation + helpers (do_cr/lf/cls/bs, scroll)
 ///   0xBC–0xDB  scroll subroutine
 ///   0xDC–0xDF  RET pads
 ///   0xE0–0xEB  CONIN implementation
 ///   0xEC–0xFF  zero pad
 pub fn cuter_stubs_data() -> Vec<u8> {
-    let rom: Vec<u8> = vec![
-        // ── Dispatch table at 0xC000 ─────────────────────────────────────
-        0xC9, 0x00, 0x00,              // 0x00: RET (cold-start stub)
-        0xC3, 0x20, 0xC0,              // 0x03: JMP 0xC020  (CONOUT)
-        0xC3, 0xE0, 0xC0,              // 0x06: JMP 0xC0E0  (CONIN)
-        // 0x09–0x1F: RET pads (23 bytes)
-        0xC9, 0xC9, 0xC9, 0xC9, 0xC9, 0xC9, 0xC9, 0xC9,
-        0xC9, 0xC9, 0xC9, 0xC9, 0xC9, 0xC9, 0xC9, 0xC9,
-        0xC9, 0xC9, 0xC9, 0xC9, 0xC9, 0xC9, 0xC9,
-        // ── CONOUT at 0xC020 ─────────────────────────────────────────────
-        0xF5,                          // 0x20: PUSH PSW
-        0xC5,                          // 0x21: PUSH B
-        0xD5,                          // 0x22: PUSH D
-        0xE5,                          // 0x23: PUSH H
-        0x47,                          // 0x24: MOV B,A        (save char in B)
-        // Check control chars
-        0xFE, 0x0D, 0xCA, 0x70, 0xC0,  // 0x25: CPI 0x0D; JZ 0xC070 (do_cr)
-        0xFE, 0x0A, 0xCA, 0x78, 0xC0,  // 0x2A: CPI 0x0A; JZ 0xC078 (do_lf)
-        0xFE, 0x0C, 0xCA, 0x8C, 0xC0,  // 0x2F: CPI 0x0C; JZ 0xC08C (do_cls)
-        0xFE, 0x1A, 0xCA, 0x8C, 0xC0,  // 0x34: CPI 0x1A; JZ 0xC08C (do_cls via ^Z)
-        0xFE, 0x08, 0xCA, 0xA9, 0xC0,  // 0x39: CPI 0x08; JZ 0xC0A9 (do_bs)
-        0xFE, 0x20, 0xDA, 0xB7, 0xC0,  // 0x3E: CPI 0x20; JC 0xC0B7 (ignore other ctrl)
-        // Printable: compute VDM address = 0xCC00 + row*64 + col
-        0x3A, 0xF0, 0xBF,              // 0x43: LDA 0xBFF0  (cursor_row)
-        0x26, 0x00,                    // 0x46: MVI H,0
-        0x6F,                          // 0x48: MOV L,A
-        0x29, 0x29, 0x29, 0x29, 0x29, 0x29, // 0x49–0x4E: DAD H×6 (HL=row*64)
-        0x3A, 0xF1, 0xBF,              // 0x4F: LDA 0xBFF1  (cursor_col)
-        0x85,                          // 0x52: ADD L
-        0x6F,                          // 0x53: MOV L,A
-        0x11, 0x00, 0xCC,              // 0x54: LXI D,0xCC00
-        0x19,                          // 0x57: DAD D        (HL = VDM address)
-        0x70,                          // 0x58: MOV M,B      (write char to VRAM)
-        // Advance cursor
-        0x3A, 0xF1, 0xBF,              // 0x59: LDA 0xBFF1
-        0x3C,                          // 0x5C: INR A
-        0xFE, 0x40,                    // 0x5D: CPI 64
-        0xDA, 0x6A, 0xC0,              // 0x5F: JC 0xC06A   (store_col if col < 64)
-        // col == 64: wrap to next line
-        0x3E, 0x00,                    // 0x62: MVI A,0
-        0x32, 0xF1, 0xBF,              // 0x64: STA 0xBFF1
-        0xC3, 0x78, 0xC0,              // 0x67: JMP 0xC078  (do_lf)
-        // store_col at 0xC06A
-        0x32, 0xF1, 0xBF,              // 0x6A: STA 0xBFF1
-        0xC3, 0xB7, 0xC0,              // 0x6D: JMP 0xC0B7  (done)
-        // ── do_cr at 0xC070 ──────────────────────────────────────────────
-        0x3E, 0x00,                    // 0x70: MVI A,0
-        0x32, 0xF1, 0xBF,              // 0x72: STA 0xBFF1
-        0xC3, 0xB7, 0xC0,              // 0x75: JMP 0xC0B7
-        // ── do_lf at 0xC078 ──────────────────────────────────────────────
-        0x3A, 0xF0, 0xBF,              // 0x78: LDA 0xBFF0  (row)
-        0x3C,                          // 0x7B: INR A
-        0xFE, 0x10,                    // 0x7C: CPI 16
-        0xDA, 0x86, 0xC0,              // 0x7E: JC 0xC086   (store_row if row < 16)
-        0xCD, 0xBC, 0xC0,              // 0x81: CALL 0xC0BC (scroll)
-        0x3E, 0x0F,                    // 0x84: MVI A,15
-        // store_row at 0xC086
-        0x32, 0xF0, 0xBF,              // 0x86: STA 0xBFF0
-        0xC3, 0xB7, 0xC0,              // 0x89: JMP 0xC0B7
-        // ── do_cls at 0xC08C ─────────────────────────────────────────────
-        0x21, 0x00, 0xCC,              // 0x8C: LXI H,0xCC00
-        0x06, 0x10,                    // 0x8F: MVI B,16
-        // cls_row_loop at 0xC091
-        0x0E, 0x40,                    // 0x91: MVI C,64
-        // cls_col_loop at 0xC093
-        0x36, 0x20,                    // 0x93: MVI M,0x20  (space)
-        0x23,                          // 0x95: INX H
-        0x0D,                          // 0x96: DCR C
-        0xC2, 0x93, 0xC0,              // 0x97: JNZ 0xC093
-        0x05,                          // 0x9A: DCR B
-        0xC2, 0x91, 0xC0,              // 0x9B: JNZ 0xC091
-        0x3E, 0x00,                    // 0x9E: MVI A,0
-        0x32, 0xF0, 0xBF,              // 0xA0: STA 0xBFF0
-        0x32, 0xF1, 0xBF,              // 0xA3: STA 0xBFF1
-        0xC3, 0xB7, 0xC0,              // 0xA6: JMP 0xC0B7
-        // ── do_bs at 0xC0A9 ──────────────────────────────────────────────
-        0x3A, 0xF1, 0xBF,              // 0xA9: LDA 0xBFF1
-        0xB7,                          // 0xAC: ORA A
-        0xCA, 0xB7, 0xC0,              // 0xAD: JZ 0xC0B7   (ignore if already at col 0)
-        0x3D,                          // 0xB0: DCR A
-        0x32, 0xF1, 0xBF,              // 0xB1: STA 0xBFF1
-        0xC3, 0xB7, 0xC0,              // 0xB4: JMP 0xC0B7
-        // ── done at 0xC0B7 ───────────────────────────────────────────────
-        0xE1,                          // 0xB7: POP H
-        0xD1,                          // 0xB8: POP D
-        0xC1,                          // 0xB9: POP B
-        0xF1,                          // 0xBA: POP PSW
-        0xC9,                          // 0xBB: RET
-        // ── scroll at 0xC0BC ─────────────────────────────────────────────
-        // Shift rows 1–15 up to rows 0–14 (copy 960 bytes 0xCC40→0xCC00)
-        0x01, 0xC0, 0x03,              // 0xBC: LXI B,960  (BC=0x03C0)
-        0x11, 0x40, 0xCC,              // 0xBF: LXI D,0xCC40
-        0x21, 0x00, 0xCC,              // 0xC2: LXI H,0xCC00
-        // scroll_loop at 0xC0C5
-        0x1A,                          // 0xC5: LDAX D
-        0x77,                          // 0xC6: MOV M,A
-        0x13,                          // 0xC7: INX D
-        0x23,                          // 0xC8: INX H
-        0x0B,                          // 0xC9: DCX B
-        0x78,                          // 0xCA: MOV A,B
-        0xB1,                          // 0xCB: ORA C
-        0xC2, 0xC5, 0xC0,              // 0xCC: JNZ 0xC0C5
-        // Clear row 15 (0xCFC0–0xCFFF) to spaces
-        0x21, 0xC0, 0xCF,              // 0xCF: LXI H,0xCFC0
-        0x0E, 0x40,                    // 0xD2: MVI C,64
-        // cls15_loop at 0xC0D4
-        0x36, 0x20,                    // 0xD4: MVI M,0x20
-        0x23,                          // 0xD6: INX H
-        0x0D,                          // 0xD7: DCR C
-        0xC2, 0xD4, 0xC0,              // 0xD8: JNZ 0xC0D4
-        0xC9,                          // 0xDB: RET
-        // padding 0xDC–0xDF
-        0xC9, 0xC9, 0xC9, 0xC9,
-        // ── CONIN at 0xC0E0 ──────────────────────────────────────────────
-        // Poll MITS 88-2SIO status port 0x10 (bit 0 = RDRF), read data from 0x11
-        0xDB, 0x10,                    // 0xE0: IN 0x10
-        0xE6, 0x01,                    // 0xE2: ANI 0x01
-        0xCA, 0xE0, 0xC0,              // 0xE4: JZ 0xC0E0  (spin until char ready)
-        0xDB, 0x11,                    // 0xE7: IN 0x11
-        0xE6, 0x7F,                    // 0xE9: ANI 0x7F   (strip parity)
-        0xC9,                          // 0xEB: RET
-        // padding 0xEC–0xFF (20 bytes)
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-    ];
-    debug_assert_eq!(rom.len(), 256, "CUTER stubs ROM must be exactly 256 bytes");
-    rom
+    CUTER_ROM.to_vec()
 }
 
-impl S100Card for CuterStubsCard {
-    fn as_any(&self)         -> &dyn Any     { self }
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
-    fn name(&self) -> &str { &self.name }
-
-    fn reset(&mut self) {}
-
-    fn memory_read(&mut self, addr: u16) -> Option<u8> {
-        let offset = addr.wrapping_sub(0xC000) as usize;
-        if offset < 256 {
-            Some(CUTER_ROM[offset])
-        } else {
-            None
-        }
-    }
-
-    fn memory_write(&mut self, _addr: u16, _data: u8) {} // ROM: ignore writes
-
-    fn io_read(&mut self, _port: u8) -> Option<u8> { None }
-    fn io_write(&mut self, _port: u8, _data: u8) {}
-}
-
-/// Pre-built ROM image stored as a static array to avoid re-allocating.
 static CUTER_ROM: [u8; 256] = [
     // ── Dispatch table ───────────────────────────────────────────────────
     0xC9, 0x00, 0x00, 0xC3, 0x20, 0xC0, 0xC3, 0xE0,  // 0x00–0x07
@@ -262,3 +96,4 @@ static CUTER_ROM: [u8; 256] = [
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00,
 ];
+
