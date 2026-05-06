@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { MachineState, TraceEntry } from '../wasm/index';
 import * as wasm from '../wasm/index';
 import { buildBootVector, buildBios, buildCcp } from '../utils/cpm';
+import { normalizeDiskImage } from '../utils/diskFormat';
 
 // ── Slot / config types ────────────────────────────────────────────────────────
 
@@ -503,6 +504,10 @@ export interface MachineStore {
 
   // Disk status (label or null for each of the 4 drives)
   diskStatus: (string | null)[];
+  // Detected format label for each drive (e.g. "IMD", "RAW", "88-DCDD")
+  diskFormatLabel: (string | null)[];
+  // Per-drive warnings from the last disk load (e.g. geometry mismatch)
+  diskWarnings: (string[] | null)[];
 
   // Active boot ROM and disk for the current CP/M preset (used by reset())
   activeBootRom: Uint8Array | null;
@@ -558,6 +563,8 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   actions: defaultParsed.actions,
   actionsApplied: false,
   diskStatus: [null, null, null, null],
+  diskFormatLabel: [null, null, null, null],
+  diskWarnings: [null, null, null, null],
   activeBootRom: null,
   activeBootRomAddr: 0xFF00,
   activeDiskUrl: null,
@@ -752,12 +759,42 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   insertDisk: (drive, file) => {
     const reader = new FileReader();
     reader.onload = (e) => {
-      const data = new Uint8Array(e.target!.result as ArrayBuffer);
-      wasm.insertDisk(drive, data);
+      const raw = new Uint8Array(e.target!.result as ArrayBuffer);
+
+      // Detect which FDC type the current machine has
+      const slots = get().slots;
+      const hasDcdd = slots.some(s => s.card === 'dcdd_88');
+      const controllerType: 'dcdd' | 'flat' = hasDcdd ? 'dcdd' : 'flat';
+
+      const result = normalizeDiskImage(raw, controllerType);
+
+      if (result.error) {
+        console.error(`[DiskFormat] ${result.error}`);
+        set(state => {
+          const diskStatus     = [...state.diskStatus];
+          const diskFormatLabel = [...state.diskFormatLabel];
+          const diskWarnings   = [...state.diskWarnings];
+          diskStatus[drive]     = `${file.name} ⚠`;
+          diskFormatLabel[drive] = result.formatLabel;
+          diskWarnings[drive]   = [result.error!];
+          return { diskStatus, diskFormatLabel, diskWarnings };
+        });
+        return; // don't load a broken image
+      }
+
+      if (result.warnings.length > 0) {
+        console.warn(`[DiskFormat] ${file.name}:`, result.warnings.join('\n'));
+      }
+
+      wasm.insertDisk(drive, result.data);
       set(state => {
-        const diskStatus = [...state.diskStatus];
-        diskStatus[drive] = file.name;
-        return { diskStatus };
+        const diskStatus      = [...state.diskStatus];
+        const diskFormatLabel = [...state.diskFormatLabel];
+        const diskWarnings    = [...state.diskWarnings];
+        diskStatus[drive]      = file.name;
+        diskFormatLabel[drive] = result.formatLabel;
+        diskWarnings[drive]    = result.warnings.length > 0 ? result.warnings : null;
+        return { diskStatus, diskFormatLabel, diskWarnings };
       });
     };
     reader.readAsArrayBuffer(file);
@@ -767,9 +804,13 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     // Insert empty disk (zero bytes = eject)
     wasm.insertDisk(drive, new Uint8Array(0));
     set(state => {
-      const diskStatus = [...state.diskStatus];
-      diskStatus[drive] = null;
-      return { diskStatus };
+      const diskStatus      = [...state.diskStatus];
+      const diskFormatLabel = [...state.diskFormatLabel];
+      const diskWarnings    = [...state.diskWarnings];
+      diskStatus[drive]      = null;
+      diskFormatLabel[drive] = null;
+      diskWarnings[drive]    = null;
+      return { diskStatus, diskFormatLabel, diskWarnings };
     });
   },
 
