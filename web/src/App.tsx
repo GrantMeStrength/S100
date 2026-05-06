@@ -11,6 +11,7 @@ import { DiskManager } from './components/DiskManager';
 import { ProgrammedOutputPanel } from './components/ProgrammedOutputPanel';
 import { MemoryView } from './components/MemoryView';
 import { DazzlerDisplay } from './components/DazzlerDisplay';
+import { VdmDisplay } from './components/VdmDisplay';
 
 export default function App() {
   const initWasm    = useMachineStore(s => s.initWasm);
@@ -34,6 +35,7 @@ export default function App() {
   const [rightTab, setRightTab] = useState<'trace' | 'memory'>('trace');
 
   const hasDazzler = slots.some(s => s.card === 'dazzler');
+  const hasVdm     = slots.some(s => s.card === 'vdm');
 
   const rafRef      = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -203,6 +205,12 @@ export default function App() {
             <>
               <Divider />
               <DazzlerDisplay />
+            </>
+          )}
+          {hasVdm && (
+            <>
+              <Divider />
+              <VdmDisplay />
             </>
           )}
           <Divider />

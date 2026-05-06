@@ -138,3 +138,7 @@ export function setPC(pc: number): void {
 export function getDazzlerFrame(): Uint8Array {
   return getEmulator().getDazzlerFrame();
 }
+
+export function getVdmFrame(): Uint8Array {
+  return getEmulator().getVdmFrame();
+}

@@ -129,6 +129,13 @@ impl Emulator {
     pub fn get_dazzler_frame(&mut self) -> Vec<u8> {
         self.machine.get_dazzler_frame()
     }
+
+    /// Return the raw 1024-byte VDM-1 VRAM, or an empty Uint8Array if no VDM card is present.
+    /// Each byte: bit 7 = inverse video, bits 6–0 = ASCII character code.
+    #[wasm_bindgen(js_name = getVdmFrame)]
+    pub fn get_vdm_frame(&self) -> Vec<u8> {
+        self.machine.get_vdm_frame()
+    }
 }
 
 #[cfg(test)]

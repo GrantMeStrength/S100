@@ -13,6 +13,7 @@ use crate::cards::{
     rom::RomCard,
     serial::SerialCard,
     sio_88::Sio88Card,
+    vdm::VdmCard,
 };
 use crate::cpu::Cpu8080;
 use crate::cpu_z80::CpuZ80;
@@ -125,6 +126,7 @@ pub struct Machine {
     pub fdc_idx: Option<usize>,
     pub fif_idx: Option<usize>,
     pub dazzler_idx: Option<usize>,
+    pub vdm_idx: Option<usize>,
     /// IMSAI Programmed Output latch — captures the last byte written to port 0xFF.
     pub programmed_output: u8,
 }
@@ -141,6 +143,7 @@ impl Machine {
             fdc_idx: None,
             fif_idx: None,
             dazzler_idx: None,
+            vdm_idx: None,
             programmed_output: 0,
         }
     }
@@ -265,6 +268,13 @@ impl Machine {
                 "dazzler" => {
                     self.dazzler_idx = Some(self.bus.cards.len());
                     self.bus.add_card(Box::new(DazzlerCard::new("Dazzler")));
+                }
+
+                "vdm" => {
+                    let base = slot.params.get("base")
+                        .and_then(Value::as_u64).unwrap_or(0xCC00) as u16;
+                    self.vdm_idx = Some(self.bus.cards.len());
+                    self.bus.add_card(Box::new(VdmCard::new("VDM-1", base)));
                 }
 
                 "fdc_wd1793" => {
@@ -673,6 +683,18 @@ impl Machine {
             }
             None => vec![],
         }
+    }
+
+    /// Return the 1024-byte VDM-1 VRAM, or an empty vec if no VDM card is present.
+    /// Each byte: bit7 = inverse, bits6-0 = ASCII char.
+    pub fn get_vdm_frame(&self) -> Vec<u8> {
+        let idx = match self.vdm_idx { Some(i) => i, None => return vec![] };
+        if let Some(card) = self.bus.cards.get(idx) {
+            if let Some(vdm) = card.as_any().downcast_ref::<VdmCard>() {
+                return vdm.vram.to_vec();
+            }
+        }
+        vec![]
     }
 
 }

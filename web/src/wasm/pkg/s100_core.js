@@ -87,6 +87,17 @@ export class Emulator {
         }
     }
     /**
+     * Return the raw 1024-byte VDM-1 VRAM, or an empty Uint8Array if no VDM card is present.
+     * Each byte: bit 7 = inverse video, bits 6–0 = ASCII character code.
+     * @returns {Uint8Array}
+     */
+    getVdmFrame() {
+        const ret = wasm.emulator_getVdmFrame(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
      * Insert a disk image into the specified drive (0=A, 1=B, 2=C, 3=D).
      * @param {number} drive
      * @param {Uint8Array} data

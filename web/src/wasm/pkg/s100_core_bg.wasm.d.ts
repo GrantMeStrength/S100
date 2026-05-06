@@ -7,6 +7,7 @@ export const emulator_getDiskData: (a: number, b: number) => [number, number];
 export const emulator_getSerialOutput: (a: number) => [number, number];
 export const emulator_getState: (a: number) => [number, number];
 export const emulator_getTrace: (a: number, b: bigint, c: number) => [number, number];
+export const emulator_getVdmFrame: (a: number) => [number, number];
 export const emulator_insertDisk: (a: number, b: number, c: number, d: number) => void;
 export const emulator_loadBinary: (a: number, b: number, c: number, d: number) => void;
 export const emulator_loadMachine: (a: number, b: number, c: number) => [number, number];

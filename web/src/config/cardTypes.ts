@@ -276,6 +276,19 @@ export const CARD_TYPES: CardTypeInfo[] = [
     defaultParams: {},
     configFields: [],
   },
+  {
+    id: 'vdm',
+    label: 'Processor Technology VDM-1',
+    shortLabel: 'VDM-1',
+    color: '#0a1a10',
+    accent: '#33cc66',
+    description: 'Processor Technology VDM-1 memory-mapped video display card. Outputs 16 rows × 64 columns of ASCII text via composite video. No I/O ports — the display buffer is mapped directly into the system address space. Bit 7 of each byte enables inverse video.',
+    ports: [],
+    defaultParams: { base: '0xCC00' },
+    configFields: [
+      { key: 'base', label: 'VRAM base address (default: 0xCC00)', type: 'hex', min: 0, max: 0xFC00, default: 0xCC00 },
+    ],
+  },
 ];
 
 export function getCardType(id: string): CardTypeInfo | undefined {
