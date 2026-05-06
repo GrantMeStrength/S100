@@ -493,7 +493,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
         { slot: 0, card: 'cuter' },
         { slot: 1, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
         { slot: 2, card: 'ram',      params: { base: 0, size: 65536 } },
-        { slot: 3, card: 'sio_88' },
+        { slot: 3, card: 'sio_88_2sio' },
         { slot: 4, card: 'vdm',      params: { base: 0xCC00 } },
       ],
     }),
