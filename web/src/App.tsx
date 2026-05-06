@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useMachineStore } from './store/machineStore';
 import { SYSTEM_PRESETS } from './store/machineStore';
 import { Terminal } from './components/Terminal';
@@ -12,6 +12,8 @@ import { ProgrammedOutputPanel } from './components/ProgrammedOutputPanel';
 import { MemoryView } from './components/MemoryView';
 import { DazzlerDisplay } from './components/DazzlerDisplay';
 import { VdmDisplay } from './components/VdmDisplay';
+import { parseIntelHex, hexLoadSummary } from './utils/intelHex';
+import * as wasm from './wasm/index';
 
 export default function App() {
   const initWasm    = useMachineStore(s => s.initWasm);
@@ -36,6 +38,36 @@ export default function App() {
 
   const hasDazzler = slots.some(s => s.card === 'dazzler');
   const hasVdm     = slots.some(s => s.card === 'vdm');
+
+  // Intel HEX loader
+  const hexInputRef = useRef<HTMLInputElement>(null);
+  const [hexStatus, setHexStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const handleHexFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result as string;
+      const result = parseIntelHex(text);
+      if (!result.ok) {
+        setHexStatus({ ok: false, msg: `Parse error line ${result.error.line}: ${result.error.message}` });
+      } else {
+        const { segments, startAddress } = result.file;
+        for (const seg of segments) {
+          wasm.loadBinary(seg.address, seg.data);
+        }
+        if (startAddress !== undefined) {
+          wasm.setPC(startAddress);
+        }
+        setHexStatus({ ok: true, msg: hexLoadSummary(result.file) });
+      }
+      // Reset input so the same file can be re-loaded
+      e.target.value = '';
+      setTimeout(() => setHexStatus(null), 5000);
+    };
+    reader.readAsText(file);
+  }, []);
 
   const rafRef      = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -140,6 +172,23 @@ export default function App() {
               <CtrlBtn onClick={reset} disabled={!wasmReady} title="Cold reboot — re-injects boot ROM and reboots from disk, disks unchanged">
                 ⟳ Reboot
               </CtrlBtn>
+
+              {/* Intel HEX loader */}
+              <input
+                ref={hexInputRef}
+                type="file"
+                accept=".hex,.ihx,.h86"
+                style={{ display: 'none' }}
+                onChange={handleHexFile}
+              />
+              <CtrlBtn
+                onClick={() => hexInputRef.current?.click()}
+                disabled={!wasmReady}
+                color="#a371f7"
+                title="Load an Intel HEX file into memory. If the file specifies a start address, the PC will be set automatically."
+              >
+                ↑ Load HEX
+              </CtrlBtn>
             </>
           )}
         </div>
@@ -154,6 +203,19 @@ export default function App() {
           fontSize: 12,
         }}>
           Error: {error}
+        </div>
+      )}
+
+      {hexStatus && (
+        <div style={{
+          background: hexStatus.ok ? '#0d2817' : '#2d0f0f',
+          borderBottom: `1px solid ${hexStatus.ok ? '#3fb950' : '#f85149'}`,
+          padding: '4px 16px',
+          color: hexStatus.ok ? '#3fb950' : '#f85149',
+          fontSize: 12,
+          fontFamily: 'monospace',
+        }}>
+          {hexStatus.ok ? '✓ HEX loaded — ' : '✗ '}{hexStatus.msg}
         </div>
       )}
 
