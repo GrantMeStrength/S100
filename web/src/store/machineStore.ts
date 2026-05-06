@@ -486,11 +486,11 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     //   Target, Raiders, Othello — require CUTER stubs (auto-provided)
     //   Source: https://github.com/dhansel/VDM1/tree/main/programs
     id: 'altair_vdm1',
-    label: 'Altair 8800 + VDM-1 (Processor Technology)',
+    label: 'Altair 8800 + VDM-1 + Dazzler (Processor Technology)',
     romUrl: '/roms/cuter_stubs.bin',
     cpm: true,
     machine: JSON.stringify({
-      name: 'Altair 8800 + VDM-1',
+      name: 'Altair 8800 + VDM-1 + Dazzler',
       slots: [
         { slot: 0, card: 'rom',      params: { base: 0xC000, size: 256, rom_image: 'cuter_stubs' } },
         { slot: 1, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
@@ -498,6 +498,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
         { slot: 3, card: 'sio_88_2sio' },
         { slot: 4, card: 'dcdd_88' },
         { slot: 5, card: 'vdm',      params: { base: 0xCC00 } },
+        { slot: 6, card: 'dazzler' },
       ],
       actions: [
         { id: 'altair-boot-vector', type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 FF' }] } },
