@@ -291,6 +291,17 @@ export const CARD_TYPES: CardTypeInfo[] = [
       { key: 'base', label: 'VRAM base address (default: 0xCC00)', type: 'hex', min: 0, max: 0xFC00, default: 0xCC00 },
     ],
   },
+  {
+    id: 'cuter',
+    label: 'CUTER Compatibility Stubs',
+    shortLabel: 'CUTER',
+    color: '#1a1010',
+    accent: '#cc6633',
+    description: 'Processor Technology CUTER compatibility stubs. Provides a 256-byte ROM at 0xC000–0xC0FF with working CONOUT (0xC003) and CONIN (0xC006) entry points. Required for VDM-1 programs from the dhansel/VDM1 repository. CONIN polls the MITS 88-2SIO at ports 0x10/0x11.',
+    ports: [],
+    defaultParams: {},
+    configFields: [],
+  },
 ];
 
 export function getCardType(id: string): CardTypeInfo | undefined {

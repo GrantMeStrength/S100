@@ -474,6 +474,30 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
       ],
     }),
   },
+  {
+    // Processor Technology VDM-1 video card with CUTER compatibility stubs.
+    //
+    // The CUTER stubs card must come BEFORE ram so it wins the first-responder
+    // race for reads from 0xC000–0xC0FF (bus returns the first card that claims
+    // the address).  CONIN uses the MITS 88-2SIO at ports 0x10/0x11.
+    //
+    // Compatible software (load via "↑ Load HEX"):
+    //   Trek-80  — standalone, no CUTER needed (start addr 0x0000)
+    //   Target, Raiders, Othello — require CUTER stubs (auto-provided)
+    //   Source: https://github.com/dhansel/VDM1/tree/main/programs
+    id: 'altair_vdm1',
+    label: 'Altair 8800 + VDM-1 (Processor Technology)',
+    machine: JSON.stringify({
+      name: 'Altair 8800 + VDM-1',
+      slots: [
+        { slot: 0, card: 'cuter' },
+        { slot: 1, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
+        { slot: 2, card: 'ram',      params: { base: 0, size: 65536 } },
+        { slot: 3, card: 'sio_88' },
+        { slot: 4, card: 'vdm',      params: { base: 0xCC00 } },
+      ],
+    }),
+  },
 ];
 
 // ── Store ─────────────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ use serde_json::Value;
 use crate::bus::{Bus, BusInterface};
 use crate::cards::{
     cpu_z80::Z80Card,
+    cuter::CuterStubsCard,
     dazzler::DazzlerCard,
     dcdd::Dcdd88Card,
     fdc::FloppyController,
@@ -271,6 +272,10 @@ impl Machine {
                     self.bus.add_card(Box::new(DazzlerCard::new("Dazzler")));
                 }
 
+                "cuter" => {
+                    self.bus.add_card(Box::new(CuterStubsCard::new()));
+                }
+
                 "vdm" => {
                     let base = slot.params.get("base")
                         .and_then(Value::as_u64).unwrap_or(0xCC00) as u16;
@@ -463,6 +468,11 @@ impl Machine {
             cpu.reset();
         }
         self.bus.reset();
+        // Clear VDM-1 cursor state on reset so CUTER CONOUT starts at (0,0)
+        if self.vdm_idx.is_some() {
+            self.bus.mem_write(0xBFF0, 0);
+            self.bus.mem_write(0xBFF1, 0);
+        }
     }
 
     pub fn set_pc(&mut self, pc: u16) {
