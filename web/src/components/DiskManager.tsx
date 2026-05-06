@@ -106,8 +106,8 @@ export function DiskManager() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-        <div style={{ color: '#f0883e', fontSize: 11, fontWeight: 'bold', letterSpacing: 1, flex: 1 }}>
-          DISK DRIVES
+        <div style={{ color: '#f0883e', fontSize: 11, fontWeight: 'bold', letterSpacing: 1, textTransform: 'uppercase', flex: 1 }}>
+          Disk Drives
         </div>
         <button
           onClick={() => setShowHelp(h => !h)}

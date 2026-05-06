@@ -1,6 +1,8 @@
 // VDM-1 video display component
 //
-// Renders the 16 × 64 character VRAM of the Processor Technology VDM-1 card.
+// Renders the 16 × 64 character display of the Processor Technology VDM-1 card.
+// The core applies the DSTAT circular-buffer offset and shadow blanking before
+// returning the frame, so the frontend renders the 1024 bytes linearly.
 // Each byte: bit 7 = inverse video, bits 6-0 = ASCII character.
 //
 // Display geometry:

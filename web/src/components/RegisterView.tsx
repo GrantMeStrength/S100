@@ -36,7 +36,7 @@ export function RegisterView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ color: '#8b949e', fontSize: 12 }}>CPU — {isZ80 ? 'Z80' : '8080'}</span>
+      <span style={{ color: '#8b949e', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>CPU — {isZ80 ? 'Z80' : '8080'}</span>
 
       <div style={{ display: 'flex', gap: 16 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>

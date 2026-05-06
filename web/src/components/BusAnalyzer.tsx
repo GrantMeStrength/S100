@@ -50,7 +50,7 @@ export function BusAnalyzer() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <span style={{ color: '#8b949e', fontSize: 12 }}>BUS ANALYZER</span>
+      <span style={{ color: '#8b949e', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>Bus Analyzer</span>
 
       {/* LED bus display */}
       <div style={{

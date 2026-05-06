@@ -30,14 +30,15 @@ export function TraceViewer() {
   const visible = useMemo(() => [...entries].reverse().slice(0, 64), [entries]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ color: '#8b949e', fontSize: 12 }}>BUS TRACE</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minHeight: 0 }}>
+      <span style={{ color: '#8b949e', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', flexShrink: 0 }}>Bus Trace</span>
       <div style={{
         background: '#0d1117',
         border: '1px solid #30363d',
         borderRadius: 4,
         padding: '4px 0',
-        height: 200,
+        flex: 1,
+        minHeight: 0,
         overflowY: 'auto',
         fontFamily: 'monospace',
         fontSize: 11,

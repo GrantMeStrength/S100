@@ -116,7 +116,7 @@ export function Terminal() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ color: '#8b949e', fontSize: 12 }}>TERMINAL (VT100)</span>
+        <span style={{ color: '#8b949e', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>Terminal</span>
         <button onClick={clearTerminal} style={btnStyle}>Clear</button>
       </div>
       {/* Wrapper positions the "click to focus" overlay */}

@@ -111,7 +111,9 @@ export default function App() {
         <span style={{ color: '#f0883e', fontWeight: 'bold', fontSize: 14, letterSpacing: 2 }}>
           S-100 VIRTUAL WORKBENCH
         </span>
-        <span style={{ color: '#8b949e', fontSize: 11 }}>Intel 8080 / CP/M</span>
+        <span style={{ color: '#8b949e', fontSize: 11 }}>
+          {slots.some(s => s.card === 'cpu_z80') ? 'Zilog Z80' : 'Intel 8080'}
+        </span>
         {mode === 'cpm' && (
           <span style={{
             background: '#1f6feb33',
@@ -147,8 +149,10 @@ export default function App() {
             color="#79c0ff"
             disabled={!wasmReady || running}
           >
-            ⚙ Load System
+            ⚙ Load
           </CtrlBtn>
+
+          <ToolbarSep />
 
           {!wasmReady ? (
             <span style={{ color: '#8b949e', fontSize: 12 }}>Loading WASM…</span>
@@ -172,6 +176,8 @@ export default function App() {
               <CtrlBtn onClick={reset} disabled={!wasmReady} title="Cold reboot — re-injects boot ROM and reboots from disk, disks unchanged">
                 ⟳ Reboot
               </CtrlBtn>
+
+              <ToolbarSep />
 
               {/* Intel HEX loader */}
               <input
@@ -247,6 +253,8 @@ export default function App() {
           overflowY: 'auto',
           flexShrink: 0,
         }}>
+          <MachinePhoto presetId={selectedPreset} />
+          <Divider />
           <ChassisView />
           <Divider />
           <RegisterView />
@@ -356,6 +364,17 @@ function Divider() {
   return <div style={{ borderBottom: '1px solid #21262d' }} />;
 }
 
+function ToolbarSep() {
+  return (
+    <div style={{
+      width: 1,
+      height: 18,
+      background: '#30363d',
+      flexShrink: 0,
+    }} />
+  );
+}
+
 function CtrlBtn({
   onClick, children, color = '#c9d1d9', disabled = false, title,
 }: {
@@ -383,5 +402,37 @@ function CtrlBtn({
     >
       {children}
     </button>
+  );
+}
+
+function MachinePhoto({ presetId }: { presetId: string }) {
+  const isImsai = presetId.startsWith('imsai');
+  const src = isImsai ? '/images/imsai8080.jpg' : '/images/altair8800.png';
+  const label = isImsai ? 'IMSAI 8080' : 'Altair 8800';
+
+  return (
+    <div style={{ paddingBottom: 4 }}>
+      <img
+        src={src}
+        alt={label}
+        style={{
+          width: '100%',
+          borderRadius: 6,
+          border: '1px solid #30363d',
+          opacity: 0.85,
+          display: 'block',
+        }}
+      />
+      <div style={{
+        textAlign: 'center',
+        color: '#6e7681',
+        fontSize: 10,
+        marginTop: 4,
+        fontFamily: 'monospace',
+        letterSpacing: 1,
+      }}>
+        {label}
+      </div>
+    </div>
   );
 }

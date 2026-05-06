@@ -161,6 +161,7 @@ impl Machine {
         self.fdc_idx = None;
         self.fif_idx = None;
         self.dazzler_idx = None;
+        self.vdm_idx = None;
         self.programmed_output = 0;
 
         // Validate: exactly one CPU card
@@ -685,13 +686,15 @@ impl Machine {
         }
     }
 
-    /// Return the 1024-byte VDM-1 VRAM, or an empty vec if no VDM card is present.
+    /// Return the 1024-byte VDM-1 display frame in screen order, or an empty
+    /// vec if no VDM card is present.  The DSTAT register's start-row offset
+    /// and shadow depth are applied so the frontend can render linearly.
     /// Each byte: bit7 = inverse, bits6-0 = ASCII char.
     pub fn get_vdm_frame(&self) -> Vec<u8> {
         let idx = match self.vdm_idx { Some(i) => i, None => return vec![] };
         if let Some(card) = self.bus.cards.get(idx) {
             if let Some(vdm) = card.as_any().downcast_ref::<VdmCard>() {
-                return vdm.vram.to_vec();
+                return vdm.display_frame().to_vec();
             }
         }
         vec![]

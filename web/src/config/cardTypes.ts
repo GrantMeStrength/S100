@@ -282,8 +282,10 @@ export const CARD_TYPES: CardTypeInfo[] = [
     shortLabel: 'VDM-1',
     color: '#0a1a10',
     accent: '#33cc66',
-    description: 'Processor Technology VDM-1 memory-mapped video display card. Outputs 16 rows × 64 columns of ASCII text via composite video. No I/O ports — the display buffer is mapped directly into the system address space. Bit 7 of each byte enables inverse video.',
-    ports: [],
+    description: 'Processor Technology VDM-1 memory-mapped video display card. Outputs 16 rows × 64 columns of ASCII text via composite video. VRAM is mapped into the system address space at a 1K-aligned base (default 0xCC00). I/O port 0xFE controls hardware scrolling (start row) and shadow blanking. Bit 7 of each VRAM byte enables inverse video.',
+    ports: [
+      { range: '0xFE', direction: 'OUT' as const, description: 'DSTAT — display start row (bits 3-0) and shadow depth (bits 7-4) for hardware scrolling.' },
+    ],
     defaultParams: { base: '0xCC00' },
     configFields: [
       { key: 'base', label: 'VRAM base address (default: 0xCC00)', type: 'hex', min: 0, max: 0xFC00, default: 0xCC00 },
