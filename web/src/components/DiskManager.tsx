@@ -3,6 +3,76 @@ import { useMachineStore } from '../store/machineStore';
 
 const DRIVE_LABELS = ['A', 'B', 'C', 'D'];
 
+// ── Disk compatibility data ────────────────────────────────────────────────────
+
+interface DiskSource {
+  label: string;
+  url?: string;
+  notes: string;
+}
+
+interface MachineCompat {
+  cards: string[];         // card IDs that trigger this entry
+  title: string;
+  format: string;
+  size: string;
+  sources: DiskSource[];
+}
+
+const COMPAT_TABLE: MachineCompat[] = [
+  {
+    cards: ['dcdd_88'],
+    title: 'Altair 8800 — MITS 88-DCDD controller',
+    format: '88-DCDD hard-sector (77 × 32 × 137 bytes = 337,568 bytes)',
+    size: '337,568 bytes',
+    sources: [
+      {
+        label: 'SIMH Altair CP/M archives (schorn.ch)',
+        url: 'https://schorn.ch/cpm/zip/Altair8800.zip',
+        notes: 'Official SIMH disk image set. Download AltairCPM22.dsk etc. These are the canonical Altair images.',
+      },
+      {
+        label: 'SIMH trailing-edge.com software page',
+        url: 'http://simh.trailing-edge.com/software.html',
+        notes: 'Additional SIMH disk archives including Altair BASIC and CP/M.',
+      },
+    ],
+  },
+  {
+    cards: ['fdc_fif', 'fdc_wd1793', 'fdc'],
+    title: 'IMSAI / Cromemco — FIF · WD1793 · legacy FDC',
+    format: 'Flat raw IBM 3740 SSSD (77 × 26 × 128 bytes = 256,256 bytes)',
+    size: '256,256 bytes',
+    sources: [
+      {
+        label: 'Your own IMSAI / Cromemco disk images',
+        notes: 'Disk images ripped from real IMSAI or Cromemco hardware should work directly.',
+      },
+      {
+        label: 'IMD images decoded automatically',
+        notes: 'Any .imd file is automatically decoded to flat format on load. Success depends on whether the BIOS on the disk matches the emulated machine.',
+      },
+      {
+        label: 'Gaby\'s CP/M Software Archive',
+        url: 'http://www.retroarchive.org/cpm/',
+        notes: 'Large archive of CP/M software in IMD and other formats. Many are for specific hardware — look for "IMSAI" or "Cromemco" tagged images.',
+      },
+      {
+        label: 'CP/M User Group (CPMUG) volumes',
+        url: 'https://www.retroarchive.org/cpm/sets/CPMUG/',
+        notes: 'Generic CP/M software disks. May need a BIOS that matches your machine. Try them — many load under the IMSAI preset.',
+      },
+    ],
+  },
+];
+
+const GENERAL_NOTE =
+  'A BDOS error or directory of empty colons usually means the disk\'s embedded ' +
+  'BIOS uses a different sector order (skew) than this emulator expects. ' +
+  'There is no general fix — it requires a matching BIOS.';
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function DiskManager() {
   const diskStatus      = useMachineStore(s => s.diskStatus);
   const diskFormatLabel = useMachineStore(s => s.diskFormatLabel);
@@ -10,8 +80,14 @@ export function DiskManager() {
   const insertDisk      = useMachineStore(s => s.insertDisk);
   const ejectDisk       = useMachineStore(s => s.ejectDisk);
   const wasmReady       = useMachineStore(s => s.wasmReady);
+  const slots           = useMachineStore(s => s.slots);
 
   const [activeWarning, setActiveWarning] = useState<number | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
+
+  // Find which compat entry matches the current machine's card set
+  const cardIds = slots.map(s => s.card);
+  const compat  = COMPAT_TABLE.find(c => c.cards.some(id => cardIds.includes(id)));
 
   const fileRefs = [
     useRef<HTMLInputElement>(null),
@@ -29,8 +105,26 @@ export function DiskManager() {
 
   return (
     <div>
-      <div style={{ color: '#f0883e', fontSize: 11, fontWeight: 'bold', marginBottom: 8, letterSpacing: 1 }}>
-        DISK DRIVES
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ color: '#f0883e', fontSize: 11, fontWeight: 'bold', letterSpacing: 1, flex: 1 }}>
+          DISK DRIVES
+        </div>
+        <button
+          onClick={() => setShowHelp(h => !h)}
+          title="Disk compatibility guide"
+          style={{
+            background: 'transparent',
+            border: '1px solid #30363d',
+            color: showHelp ? '#58a6ff' : '#8b949e',
+            borderRadius: 3,
+            padding: '0 5px',
+            fontSize: 10,
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+          }}
+        >
+          ?
+        </button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {DRIVE_LABELS.map((label, i) => {
@@ -128,6 +222,58 @@ export function DiskManager() {
           );
         })}
       </div>
+
+      {/* Compatibility help panel */}
+      {showHelp && (
+        <div style={{
+          marginTop: 10,
+          padding: '8px 10px',
+          background: '#0d1117',
+          border: '1px solid #30363d',
+          borderRadius: 4,
+          fontSize: 10,
+          fontFamily: 'monospace',
+          color: '#8b949e',
+          lineHeight: 1.6,
+        }}>
+          {compat ? (
+            <>
+              <div style={{ color: '#58a6ff', marginBottom: 4, fontWeight: 'bold' }}>
+                {compat.title}
+              </div>
+              <div style={{ color: '#c9d1d9', marginBottom: 6 }}>
+                Format: {compat.format}
+              </div>
+              <div style={{ color: '#e3b341', marginBottom: 4 }}>Known-good sources:</div>
+              {compat.sources.map((src, si) => (
+                <div key={si} style={{ marginBottom: 6, paddingLeft: 6, borderLeft: '2px solid #30363d' }}>
+                  <div style={{ color: '#c9d1d9' }}>
+                    {src.url ? (
+                      <a href={src.url} target="_blank" rel="noreferrer"
+                        style={{ color: '#58a6ff', textDecoration: 'none' }}>
+                        {src.label}
+                      </a>
+                    ) : src.label}
+                  </div>
+                  <div>{src.notes}</div>
+                </div>
+              ))}
+            </>
+          ) : (
+            <div style={{ color: '#c9d1d9' }}>
+              Load a machine preset to see compatible disk image sources.
+            </div>
+          )}
+          <div style={{
+            marginTop: 8,
+            paddingTop: 6,
+            borderTop: '1px solid #30363d',
+            color: '#484f58',
+          }}>
+            ⚠ {GENERAL_NOTE}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
