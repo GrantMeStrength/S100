@@ -58,9 +58,9 @@ impl DazzlerCard {
         let mut rgba = vec![0u8; width * height * 4];
 
         if self.color_mode() {
-            // 4 bpp IRGB: low nibble = left pixel, high nibble = right pixel
+            // 4 bpp IRGB: high nibble = left pixel, low nibble = right pixel
             for (i, &byte) in buf.iter().enumerate() {
-                for (ni, nibble) in [byte & 0x0F, (byte >> 4) & 0x0F].iter().enumerate() {
+                for (ni, nibble) in [(byte >> 4) & 0x0F, byte & 0x0F].iter().enumerate() {
                     let pi = i * 2 + ni;
                     if pi >= width * height { break; }
                     let (r, g, b) = irgb_to_rgb(*nibble);
