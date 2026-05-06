@@ -5,8 +5,8 @@
 //                 bit7 = enable display
 //                 bits6-0 = page (frame buffer starts at page × 512)
 //   0x0F OUT = CC (Color/Control) register
-//                 bit1 = X4 (high-res mode)
-//                 bit0 = color (1 = IRGB color, 0 = B&W)
+//                 bit5 = color (1 = IRGB color, 0 = B&W)
+//                 bit4 = X4 (1 = high-res mode)
 //   0x0E IN  = status (bit7 = vsync; always 0 here)
 //
 // Display modes:
@@ -27,7 +27,7 @@ const PORT_CC: u8 = 0x0F; // color / control register
 pub struct DazzlerCard {
     name: String,
     pub nx: u8, // bit7=enable, bits6-0=page
-    pub cc: u8, // bit1=x4, bit0=color
+    pub cc: u8, // bit5=color, bit4=x4
 }
 
 impl DazzlerCard {
@@ -37,8 +37,8 @@ impl DazzlerCard {
 
     pub fn enabled(&self) -> bool { self.nx & 0x80 != 0 }
     pub fn frame_buffer_start(&self) -> u16 { ((self.nx & 0x7F) as u16) << 9 }
-    pub fn x4_mode(&self) -> bool { self.cc & 0x02 != 0 }
-    pub fn color_mode(&self) -> bool { self.cc & 0x01 != 0 }
+    pub fn x4_mode(&self) -> bool { self.cc & 0x10 != 0 }
+    pub fn color_mode(&self) -> bool { self.cc & 0x20 != 0 }
     pub fn frame_buffer_size(&self) -> usize { if self.x4_mode() { 2048 } else { 512 } }
 
     pub fn display_dims(&self) -> (usize, usize) {
