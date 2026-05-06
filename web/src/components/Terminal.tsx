@@ -142,20 +142,19 @@ export function Terminal() {
           }}
         />
         {!focused && (
-          <div style={{
-            position: 'absolute', inset: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          <span style={{
+            position: 'absolute',
+            top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
             pointerEvents: 'none',
+            color: '#8b949e', fontSize: 11,
+            background: 'rgba(13,17,23,0.75)',
+            padding: '2px 8px', borderRadius: 3,
+            border: '1px solid #30363d',
+            whiteSpace: 'nowrap',
           }}>
-            <span style={{
-              color: '#8b949e', fontSize: 11,
-              background: 'rgba(13,17,23,0.75)',
-              padding: '2px 8px', borderRadius: 3,
-              border: '1px solid #30363d',
-            }}>
-              click to type
-            </span>
-          </div>
+            click to type
+          </span>
         )}
       </div>
     </div>

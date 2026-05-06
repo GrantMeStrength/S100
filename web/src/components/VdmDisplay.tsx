@@ -20,8 +20,13 @@ const COLS   = 64;
 const ROWS   = 16;
 const CELL_W = 8;
 const CELL_H = 16;
-const WIDTH  = COLS * CELL_W;   // 512
+const WIDTH  = COLS * CELL_W;   // 512 — internal canvas resolution
 const HEIGHT = ROWS * CELL_H;   // 256
+
+// CSS display size — matches the terminal canvas width (80 × 7 + 8 = 568 px)
+// so both panels align horizontally. imageRendering: pixelated keeps it crisp.
+const CSS_W = 568;
+const CSS_H = Math.round(HEIGHT * CSS_W / WIDTH);  // 284
 
 const FG_NORMAL  = '#33ff66';
 const BG_NORMAL  = '#061006';
@@ -104,12 +109,13 @@ export function VdmDisplay(): React.ReactElement {
         width={WIDTH}
         height={HEIGHT}
         style={{
-          display:       'block',
+          display:        'block',
+          width:          CSS_W,
+          height:         CSS_H,
           border:        '1px solid #33ff6640',
           borderRadius:  '4px',
           imageRendering: 'pixelated',
           background:    BG_NORMAL,
-          maxWidth:      '100%',
         }}
       />
     </div>
