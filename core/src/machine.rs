@@ -340,6 +340,9 @@ impl Machine {
                 .collect()
         } else if let Some(b64) = params.get("data_base64").and_then(Value::as_str) {
             base64_decode(b64).map_err(|e| format!("bad base64: {e}"))
+        } else if let Some("cuter_stubs") = params.get("rom_image").and_then(Value::as_str) {
+            // Built-in CUTER compatibility stubs — no external binary required
+            Ok(cuter_stubs_data())
         } else if let Some(size) = params.get("size").and_then(Value::as_u64) {
             let fill = params.get("fill")
                 .and_then(Value::as_u64).unwrap_or(0xFF) as u8;

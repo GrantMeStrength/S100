@@ -61,7 +61,12 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
   };
 
   const handleApply = () => {
-    updateCardParams(slot, params);
+    const finalParams = { ...params };
+    // Phantom port: strip the port address if the toggle is off so Rust ignores it
+    if (!finalParams.phantom_enabled) {
+      delete finalParams.phantom_port;
+    }
+    updateCardParams(slot, finalParams);
     onClose();
   };
 
@@ -155,7 +160,9 @@ export function CardConfigModal({ slot, entry, onClose }: Props) {
                 {/* Config fields */}
                 {info.configFields.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {info.configFields.map(field => (
+                    {info.configFields
+                      .filter(field => !field.dependsOn || params[field.dependsOn])
+                      .map(field => (
                       <FieldRow
                         key={field.key}
                         field={field}
@@ -399,6 +406,32 @@ function FieldRow({
   }
 
   const num = typeof value === 'number' ? value : (field.default as number ?? 0);
+
+  if (field.type === 'boolean') {
+    const checked = Boolean(value ?? field.default);
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {label}
+        <button
+          onClick={() => onChange(!checked)}
+          style={{
+            background: checked ? '#0d2817' : '#21262d',
+            border: `1px solid ${checked ? '#3fb950' : '#30363d'}`,
+            borderRadius: 10,
+            color: checked ? '#3fb950' : '#6e7681',
+            cursor: 'pointer',
+            fontSize: 10,
+            padding: '2px 12px',
+            fontFamily: 'monospace',
+            letterSpacing: 0.5,
+            flexShrink: 0,
+          }}
+        >
+          {checked ? 'ON' : 'OFF'}
+        </button>
+      </div>
+    );
+  }
 
   if (field.type === 'select') {
     return (

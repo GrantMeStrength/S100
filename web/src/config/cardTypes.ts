@@ -61,6 +61,14 @@ export const ROM_IMAGES: RomImagePreset[] = [
     size: 4096,
     description: 'Full-featured Altair Monitor. Commands: D(ump), E(nter), G(o), B(reakpoint), M(ove), F(ill), S(ubstitute), T(race). Serial: 88-2SIO status 0x10, data 0x11.',
   },
+  {
+    id: 'cuter_stubs',
+    label: 'CUTER Compatibility Stubs (Processor Technology VDM-1)',
+    url: '/roms/cuter_stubs.bin',
+    base: 0xC000,
+    size: 256,
+    description: 'CUTER CONOUT (0xC003) and CONIN (0xC006) stubs for the Processor Technology VDM-1. Provides full cursor management, scrolling, and CR/LF/FF/BS handling. CONIN polls the MITS 88-2SIO at ports 0x10/0x11. Must be loaded before RAM in the bus card list.',
+  },
 ];
 
 export function getRomImage(id: string): RomImagePreset | undefined {
@@ -72,14 +80,16 @@ export function getRomImage(id: string): RomImagePreset | undefined {
 export interface ConfigField {
   key: string;
   label: string;
-  /** hex = numeric as 0x…  |  romimage = ROM preset dropdown  |  select = fixed option list */
-  type: 'number' | 'hex' | 'file' | 'romimage' | 'select';
+  /** hex = numeric as 0x…  |  romimage = ROM preset dropdown  |  select = fixed option list  |  boolean = on/off toggle */
+  type: 'number' | 'hex' | 'file' | 'romimage' | 'select' | 'boolean';
   min?: number;
   max?: number;
   step?: number;
   default?: unknown;
   accept?: string;   // file picker filter
   options?: { label: string; value: number }[];  // for type='select'
+  /** Hide this field unless the named param is truthy */
+  dependsOn?: string;
 }
 
 export interface PortInfo {
@@ -168,7 +178,8 @@ export const CARD_TYPES: CardTypeInfo[] = [
       { key: 'base', label: 'Base address', type: 'hex', min: 0, max: 0xFFFF, default: 0xF800 },
       { key: 'size', label: 'Size (bytes)',  type: 'number', min: 256, max: 32768, step: 256, default: 2048 },
       { key: '_file', label: 'Custom ROM image (.bin)', type: 'file', accept: '.bin,.rom,.img,.hex', default: null },
-      { key: 'phantom_port', label: 'Phantom port — write pages ROM out (optional)', type: 'hex', min: 0, max: 0xFF, default: null },
+      { key: 'phantom_enabled', label: 'Phantom port — page ROM out on I/O write', type: 'boolean', default: false },
+      { key: 'phantom_port', label: 'Phantom port address', type: 'hex', min: 0, max: 0xFF, default: 0xFF, dependsOn: 'phantom_enabled' },
     ],
   },
   {
@@ -290,17 +301,6 @@ export const CARD_TYPES: CardTypeInfo[] = [
     configFields: [
       { key: 'base', label: 'VRAM base address (default: 0xCC00)', type: 'hex', min: 0, max: 0xFC00, default: 0xCC00 },
     ],
-  },
-  {
-    id: 'cuter',
-    label: 'CUTER Compatibility Stubs',
-    shortLabel: 'CUTER',
-    color: '#1a1010',
-    accent: '#cc6633',
-    description: 'Processor Technology CUTER compatibility stubs. Provides a 256-byte ROM at 0xC000–0xC0FF with working CONOUT (0xC003) and CONIN (0xC006) entry points. Required for VDM-1 programs from the dhansel/VDM1 repository. CONIN polls the MITS 88-2SIO at ports 0x10/0x11.',
-    ports: [],
-    defaultParams: {},
-    configFields: [],
   },
 ];
 
