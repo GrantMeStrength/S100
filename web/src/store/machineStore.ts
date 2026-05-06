@@ -488,6 +488,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     id: 'altair_vdm1',
     label: 'Altair 8800 + VDM-1 (Processor Technology)',
     romUrl: '/roms/cuter_stubs.bin',
+    cpm: true,
     machine: JSON.stringify({
       name: 'Altair 8800 + VDM-1',
       slots: [
@@ -495,7 +496,11 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
         { slot: 1, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
         { slot: 2, card: 'ram',      params: { base: 0, size: 65536 } },
         { slot: 3, card: 'sio_88_2sio' },
-        { slot: 4, card: 'vdm',      params: { base: 0xCC00 } },
+        { slot: 4, card: 'dcdd_88' },
+        { slot: 5, card: 'vdm',      params: { base: 0xCC00 } },
+      ],
+      actions: [
+        { id: 'altair-boot-vector', type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 FF' }] } },
       ],
     }),
   },
