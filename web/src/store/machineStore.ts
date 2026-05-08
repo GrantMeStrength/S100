@@ -767,9 +767,9 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
         const binData = new Uint8Array(await binResp.arrayBuffer());
         wasm.loadBinary(preset.binaryLoadAddr ?? 0x0000, binData);
         if (preset.startupPc !== undefined) wasm.setPC(preset.startupPc);
-        set({ machineJson, mode: 'demo', activeBootRom: null, activeBootRomAddr: 0xFF00, activeDiskUrl: null, activeDiskLabel: null, running: true, actionsApplied: true });
+        set({ machineJson, mode: 'demo', activeBootRom: null, activeBootRomAddr: 0xFF00, activeDiskUrl: null, activeDiskLabel: null, diskStatus: [null, null, null, null], running: true, actionsApplied: true });
       } else {
-        set({ machineJson, mode: 'demo', activeBootRom: null, activeBootRomAddr: 0xFF00, activeDiskUrl: null, activeDiskLabel: null });
+        set({ machineJson, mode: 'demo', activeBootRom: null, activeBootRomAddr: 0xFF00, activeDiskUrl: null, activeDiskLabel: null, diskStatus: [null, null, null, null] });
       }
     } catch (e) {
       set({ error: String(e) });
