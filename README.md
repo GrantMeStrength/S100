@@ -80,9 +80,23 @@ web/                 # React frontend
 
 ### Prerequisites
 
-- Rust (stable ≥ 1.85)
-- `wasm-pack`  — `cargo install wasm-pack`
-- Node.js ≥ 18
+1. **Rust** (stable ≥ 1.85) — install via [rustup](https://rustup.rs/):
+   ```sh
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   source "$HOME/.cargo/env"
+   ```
+
+2. **WASM target** — add the WebAssembly compile target:
+   ```sh
+   rustup target add wasm32-unknown-unknown
+   ```
+
+3. **wasm-pack** — builds the Rust crate into a WASM npm package:
+   ```sh
+   curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+   ```
+
+4. **Node.js** ≥ 18 — install from [nodejs.org](https://nodejs.org/) or via a version manager like `nvm`.
 
 ### WASM core
 
