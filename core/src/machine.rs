@@ -14,6 +14,7 @@ use crate::cards::{
     rom::RomCard,
     serial::SerialCard,
     sio_88::Sio88Card,
+    sol20_io::Sol20IoCard,
     vdm::VdmCard,
 };
 use crate::cpu::Cpu8080;
@@ -265,6 +266,11 @@ impl Machine {
                 "sio_88_2sio" => {
                     self.serial_idx = Some(self.bus.cards.len());
                     self.bus.add_card(Box::new(Sio88Card::new("88-2SIO")));
+                }
+
+                "sol20_io" => {
+                    self.serial_idx = Some(self.bus.cards.len());
+                    self.bus.add_card(Box::new(Sol20IoCard::new("SOL-20 I/O")));
                 }
 
                 "dazzler" => {
@@ -585,6 +591,9 @@ impl Machine {
                 if let Some(sio) = card.as_any_mut().downcast_mut::<Sio88Card>() {
                     return sio.drain_tx();
                 }
+                if let Some(sol) = card.as_any_mut().downcast_mut::<Sol20IoCard>() {
+                    return sol.drain_tx();
+                }
             }
         }
         vec![]
@@ -599,6 +608,10 @@ impl Machine {
                 }
                 if let Some(sio) = card.as_any_mut().downcast_mut::<Sio88Card>() {
                     sio.push_rx(byte);
+                    return;
+                }
+                if let Some(sol) = card.as_any_mut().downcast_mut::<Sol20IoCard>() {
+                    sol.push_rx(byte);
                 }
             }
         }

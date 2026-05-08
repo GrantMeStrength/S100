@@ -1,5 +1,6 @@
 pub mod cuter;
 pub mod dazzler;
+pub mod sol20_io;
 pub mod dcdd;
 pub mod fdc;
 pub mod fdc_fif;

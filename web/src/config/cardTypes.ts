@@ -16,7 +16,7 @@ export const ROM_IMAGES: RomImagePreset[] = [
   {
     id: 'altair_basic_8k',
     label: 'MITS Altair BASIC 8K (Rev 3.2)',
-    url: '/roms/8kbas.bin',
+    url: `${import.meta.env.BASE_URL}roms/8kbas.bin`,
     base: 0xC000,
     size: 8192,
     description: 'MITS 8K BASIC v3.2 for the Altair 8800. Loads at 0xC000–0xDFFF; a copy loop in RAM transfers it to 0x0000 on boot. Uses 88-SIO ports (data 0x01, status 0x00) with 7-bit output.',
@@ -24,7 +24,7 @@ export const ROM_IMAGES: RomImagePreset[] = [
   {
     id: 'imsai_basic8k',
     label: 'IMSAI 8K BASIC v1.4',
-    url: '/roms/imsai_basic8k.bin',
+    url: `${import.meta.env.BASE_URL}roms/imsai_basic8k.bin`,
     base: 0x0000,
     size: 8192,
     description: 'IMSAI 8K BASIC v1.4. ROM at 0x0000–0x1FFF; CPU starts here directly. Uses 8251 USART: data port 0x02, status port 0x03 (bit0=TxRDY, bit1=RxRDY).',
@@ -32,7 +32,7 @@ export const ROM_IMAGES: RomImagePreset[] = [
   {
     id: 'memon80',
     label: 'Memon/80 v3.06 (M. Eberhard / JAIR)',
-    url: '/roms/memon80.bin',
+    url: `${import.meta.env.BASE_URL}roms/memon80.bin`,
     base: 0xF800,
     size: 2048,
     description: 'Full-featured S-100 monitor for the JAIR board. Commands: D(ump), S(earch), F(ill), M(ove), I/O, B(oot). Serial: TX 0x20, RX 0x28, status 0x25.',
@@ -40,7 +40,7 @@ export const ROM_IMAGES: RomImagePreset[] = [
   {
     id: 'altmon',
     label: 'ALTMON v1.x (Altair 8800)',
-    url: '/roms/altmon.bin',
+    url: `${import.meta.env.BASE_URL}roms/altmon.bin`,
     base: 0xF800,
     size: 1024,
     description: 'Classic Altair 8800 monitor. Commands: D(ump), E(nter), G(o), R(egisters), F(ind). Serial: 88-2SIO data 0x11, status 0x10.',
@@ -48,7 +48,7 @@ export const ROM_IMAGES: RomImagePreset[] = [
   {
     id: 'ssm_mon',
     label: 'SSM 8080 Monitor v1.0 (C.E. Ohme / SSM AIO)',
-    url: '/roms/ssm_mon.bin',
+    url: `${import.meta.env.BASE_URL}roms/ssm_mon.bin`,
     base: 0xF000,
     size: 2048,
     description: 'SSM 8080 Monitor for the SSM AIO serial board. Commands: D(ump), E(nter), G(o), B(reakpoints), C(onsole). Serial: status port 0, data port 1 (inverted logic).',
@@ -56,7 +56,7 @@ export const ROM_IMAGES: RomImagePreset[] = [
   {
     id: 'amon31',
     label: 'AMON v3.1 (T. Morrow / Altair 8800)',
-    url: '/roms/amon31.bin',
+    url: `${import.meta.env.BASE_URL}roms/amon31.bin`,
     base: 0xF000,
     size: 4096,
     description: 'Full-featured Altair Monitor. Commands: D(ump), E(nter), G(o), B(reakpoint), M(ove), F(ill), S(ubstitute), T(race). Serial: 88-2SIO status 0x10, data 0x11.',
@@ -64,10 +64,18 @@ export const ROM_IMAGES: RomImagePreset[] = [
   {
     id: 'cuter_stubs',
     label: 'CUTER Compatibility Stubs (Processor Technology VDM-1)',
-    url: '/roms/cuter_stubs.bin',
+    url: `${import.meta.env.BASE_URL}roms/cuter_stubs.bin`,
     base: 0xC000,
     size: 256,
     description: 'CUTER CONOUT (0xC003) and CONIN (0xC006) stubs for the Processor Technology VDM-1. Provides full cursor management, scrolling, and CR/LF/FF/BS handling. CONIN polls the MITS 88-2SIO at ports 0x10/0x11. Must be loaded before RAM in the bus card list.',
+  },
+  {
+    id: 'solos',
+    label: 'SOLOS v1.3 Monitor (Processor Technology SOL-20)',
+    url: `${import.meta.env.BASE_URL}roms/solos.bin`,
+    base: 0xC000,
+    size: 2048,
+    description: 'SOLOS v1.3 Personality Module for the SOL-20 (3/27/77). Provides the console monitor, terminal emulation, cassette CUTS I/O, and the VDM-1 display driver. Requires SOL-20 I/O card for keyboard (ports 0xFA/0xFC).',
   },
 ];
 
@@ -301,6 +309,23 @@ export const CARD_TYPES: CardTypeInfo[] = [
     configFields: [
       { key: 'base', label: 'VRAM base address (default: 0xCC00)', type: 'hex', min: 0, max: 0xFC00, default: 0xCC00 },
     ],
+  },
+  {
+    id: 'sol20_io',
+    label: 'SOL-20 On-board I/O',
+    shortLabel: 'SOL-IO',
+    color: '#1a1200',
+    accent: '#f5c542',
+    description: 'Emulates the Processor Technology SOL-20 motherboard I/O: keyboard input (ports 0xFA/0xFC, active-low status), RS-232 serial (ports 0xF8/0xF9), and VDM DSTAT (port 0xFE). Required for the SOL-20 preset — not a standalone S-100 card.',
+    ports: [
+      { range: '0xFA', direction: 'IN',  description: 'STAPT — keyboard/tape status. Bit 0 = keyboard data ready (active-LOW).' },
+      { range: '0xFC', direction: 'IN',  description: 'KDATA — keyboard ASCII data.' },
+      { range: '0xF8', direction: 'IN',  description: 'SERST — serial status. Bit 7 = TX empty, bit 6 = RX ready.' },
+      { range: '0xF9', direction: 'IN/OUT',  description: 'SDATA — serial data (RS-232).' },
+      { range: '0xFE', direction: 'OUT', description: 'DSTAT — VDM display start/scroll (also claimed by VDM card).' },
+    ],
+    defaultParams: {},
+    configFields: [],
   },
 ];
 

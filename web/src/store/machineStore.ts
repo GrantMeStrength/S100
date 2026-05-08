@@ -4,6 +4,11 @@ import * as wasm from '../wasm/index';
 import { buildBootVector, buildBios, buildCcp } from '../utils/cpm';
 import { normalizeDiskImage } from '../utils/diskFormat';
 
+/** Prepend the Vite base URL to a public asset path. Handles GitHub Pages
+ *  sub-directory deployments where BASE_URL = '/S100/' instead of '/'. */
+const pub = (path: string) =>
+  `${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`;
+
 // ── Slot / config types ────────────────────────────────────────────────────────
 
 export interface SlotEntry {
@@ -292,7 +297,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     // At startup: MEMORY SIZE? → Enter, TERMINAL WIDTH? → Enter, WANT SIN-COS-TAN-ATN? → N
     id: 'altair_basic',
     label: 'Altair 8800 — MITS BASIC 8K',
-    romUrl: '/roms/8kbas.bin',
+    romUrl: pub('/roms/8kbas.bin'),
     machine: JSON.stringify({
       name: 'Altair 8800 BASIC',
       slots: [
@@ -337,9 +342,9 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
       ],
     }),
     cpm: true,
-    cpmBootRomUrl: '/imsai-mpu-a.bin',
+    cpmBootRomUrl: pub('/imsai-mpu-a.bin'),
     cpmBootRomAddr: 0xD800,
-    cpmDiskUrl: '/IMSAICPM60.dsk',
+    cpmDiskUrl: pub('/IMSAICPM60.dsk'),
     cpmDiskLabel: 'IMSAICPM60.dsk',
   },
   {
@@ -360,9 +365,9 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
       ],
     }),
     cpm: true,
-    cpmBootRomUrl: '/imsai-mpu-a.bin',
+    cpmBootRomUrl: pub('/imsai-mpu-a.bin'),
     cpmBootRomAddr: 0xD800,
-    cpmDiskUrl: '/IMSAICPM60_MBASIC.dsk',
+    cpmDiskUrl: pub('/IMSAICPM60_MBASIC.dsk'),
     cpmDiskLabel: 'IMSAICPM60_MBASIC.dsk',
   },
   {
@@ -373,7 +378,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     // At startup: MEMORY SIZE? → Enter, TERMINAL WIDTH? → Enter
     id: 'imsai_basic8k',
     label: 'IMSAI 8080 — 8K BASIC v1.4',
-    romUrl: '/roms/imsai_basic8k.bin',
+    romUrl: pub('/roms/imsai_basic8k.bin'),
     machine: JSON.stringify({
       name: 'IMSAI 8K BASIC',
       slots: [
@@ -388,7 +393,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
   {
     id: 'memon80',
     label: 'Memon/80 v3.06 Monitor (JAIR)',
-    romUrl: '/roms/memon80.bin',
+    romUrl: pub('/roms/memon80.bin'),
     machine: JSON.stringify({
       name: 'Memon/80 Monitor',
       slots: [
@@ -407,7 +412,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
   {
     id: 'altmon',
     label: 'ALTMON Monitor (Altair 8800)',
-    romUrl: '/roms/altmon.bin',
+    romUrl: pub('/roms/altmon.bin'),
     machine: JSON.stringify({
       name: 'ALTMON Monitor',
       slots: [
@@ -425,7 +430,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
   {
     id: 'ssm_mon',
     label: 'SSM 8080 Monitor v1.0 (SSM AIO)',
-    romUrl: '/roms/ssm_mon.bin',
+    romUrl: pub('/roms/ssm_mon.bin'),
     machine: JSON.stringify({
       name: 'SSM 8080 Monitor',
       slots: [
@@ -447,7 +452,7 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
   {
     id: 'amon31',
     label: 'AMON v3.1 Monitor (Altair 8800)',
-    romUrl: '/roms/amon31.bin',
+    romUrl: pub('/roms/amon31.bin'),
     machine: JSON.stringify({
       name: 'AMON v3.1 Monitor',
       slots: [
@@ -471,6 +476,40 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
       slots: [
         { slot: 0, card: 'cpu_8080', params: { speed_hz: 2_000_000 } },
         { slot: 1, card: 'ram', params: { base: 0, size: 65536 } },
+      ],
+    }),
+  },
+  {
+    // Processor Technology SOL-20 with SOLOS v1.3 personality module.
+    //
+    // Memory map (verified from SOLOS source):
+    //   0x0000–0xBFFF  48 KB user RAM
+    //   0xC000–0xC7FF   2 KB SOLOS ROM (personality module)
+    //   0xC800–0xCBFF   1 KB SOLOS working RAM (stack, cursor, tape buffers)
+    //   0xCC00–0xCFFF   1 KB VDM-1 character display RAM (64×16)
+    //
+    // The SOL-20 I/O card emulates:
+    //   0xFA/0xFC  keyboard status/data (active-low KDR, SOLOS uses CMA)
+    //   0xF8/0xF9  RS-232 serial UART
+    //   0xFE       VDM DSTAT scroll register (shared with VDM card)
+    //
+    // SOLOS monitor commands: D(ump), E(nter), G(o), T(ype), S(ubstitute),
+    //   R(ead tape), W(rite tape), V(erify tape), TERM (dumb terminal mode)
+    id: 'sol20_solos',
+    label: 'SOL-20 — SOLOS v1.3 Monitor',
+    romUrl: pub('/roms/solos.bin'),
+    machine: JSON.stringify({
+      name: 'Processor Technology SOL-20',
+      slots: [
+        { slot: 0, card: 'cpu_8080',  params: { speed_hz: 2_000_000 } },
+        { slot: 1, card: 'ram',       params: { base: 0, size: 0xC000 } },         // 48 KB: 0x0000–0xBFFF
+        { slot: 2, card: 'rom',       params: { base: 0xC000, size: 2048, rom_image: 'solos' } },  // SOLOS
+        { slot: 3, card: 'ram',       params: { base: 0xC800, size: 1024 } },      // SOLOS working RAM
+        { slot: 4, card: 'sol20_io'  },                                             // keyboard + serial
+        { slot: 5, card: 'vdm',       params: { base: 0xCC00 } },                  // 64×16 display
+      ],
+      actions: [
+        { type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 C0' }] } },
       ],
     }),
   },
@@ -622,7 +661,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       wasm.loadBinary(0xFF00, ALTAIR_BOOT_ROM);
 
       // Fetch and insert Altair CP/M 2.2 disk image as drive A
-      const resp = await fetch('/AltairCPM22.dsk');
+      const resp = await fetch(pub('/AltairCPM22.dsk'));
       if (!resp.ok) throw new Error(`Failed to fetch AltairCPM22.dsk: ${resp.status}`);
       const buf = await resp.arrayBuffer();
       wasm.insertDisk(0, new Uint8Array(buf));
@@ -645,7 +684,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
         diskStatus: ['AltairCPM22.dsk', null, null, null],
         activeBootRom: ALTAIR_BOOT_ROM,
         activeBootRomAddr: 0xFF00,
-        activeDiskUrl: '/AltairCPM22.dsk',
+        activeDiskUrl: pub('/AltairCPM22.dsk'),
         activeDiskLabel: 'AltairCPM22.dsk',
         error: null,
         running: true,
@@ -706,7 +745,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
           bootRom = new Uint8Array(await romResp.arrayBuffer());
         }
         const bootRomAddr = preset.cpmBootRomAddr  ?? 0xFF00;
-        const diskUrl     = preset.cpmDiskUrl  ?? '/AltairCPM22.dsk';
+        const diskUrl     = preset.cpmDiskUrl  ?? pub('/AltairCPM22.dsk');
         const diskLabel   = preset.cpmDiskLabel ?? 'AltairCPM22.dsk';
         wasm.loadBinary(bootRomAddr, bootRom);
         const resp = await fetch(diskUrl);

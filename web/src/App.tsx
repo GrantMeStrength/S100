@@ -406,9 +406,14 @@ function CtrlBtn({
 }
 
 function MachinePhoto({ presetId }: { presetId: string }) {
+  const isSol20 = presetId.startsWith('sol20');
   const isImsai = presetId.startsWith('imsai');
-  const src = isImsai ? '/images/imsai8080.jpg' : '/images/altair8800.png';
-  const label = isImsai ? 'IMSAI 8080' : 'Altair 8800';
+  const src   = isSol20 ? `${import.meta.env.BASE_URL}images/sol20.jpg`
+              : isImsai ? `${import.meta.env.BASE_URL}images/imsai8080.jpg`
+              :            `${import.meta.env.BASE_URL}images/altair8800.png`;
+  const label = isSol20 ? 'Processor Technology SOL-20'
+              : isImsai ? 'IMSAI 8080'
+              :            'Altair 8800';
 
   return (
     <div style={{ paddingBottom: 4 }}>
