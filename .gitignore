@@ -13,3 +13,7 @@
 
 # macOS
 .DS_Store
+
+# Root-level disk image collection (working copies).
+# Disk images to be served by the app live in web/public/disks/ instead.
+/disks/
