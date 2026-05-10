@@ -31,9 +31,14 @@ export default function App() {
 
   // Read CPU speed from the cpu_8080 card params
   const cpuCard = slots.find(s => s.card === 'cpu_8080' || s.card.startsWith('cpu_'));
-  const cyclesPerSecond = Math.max(1, (cpuCard?.params?.speed_hz as number) ?? 2_000_000);
+  // 0 = unlimited (run as fast as possible each frame)
+  const isUnlimited = (cpuCard?.params?.speed_hz as number) === 0;
+  const cyclesPerSecond = isUnlimited ? 0 : Math.max(1, (cpuCard?.params?.speed_hz as number) ?? 2_000_000);
 
-  const [selectedPreset, setSelectedPreset] = useState(SYSTEM_PRESETS[1].id);
+  const savedPreset = localStorage.getItem('s100_preset') ?? SYSTEM_PRESETS[1].id;
+  const [selectedPreset, setSelectedPreset] = useState(
+    SYSTEM_PRESETS.some(p => p.id === savedPreset) ? savedPreset : SYSTEM_PRESETS[1].id
+  );
   const [rightTab, setRightTab] = useState<'trace' | 'memory'>('trace');
 
   const hasDazzler = slots.some(s => s.card === 'dazzler');
@@ -75,6 +80,15 @@ export default function App() {
 
   useEffect(() => { initWasm(); }, [initWasm]);
 
+  // Auto-load the saved preset once WASM is ready
+  const autoLoadedRef = useRef(false);
+  useEffect(() => {
+    if (wasmReady && !autoLoadedRef.current) {
+      autoLoadedRef.current = true;
+      loadPreset(selectedPreset);
+    }
+  }, [wasmReady, selectedPreset, loadPreset]);
+
   // Fractional-accumulator run loop
   useEffect(() => {
     if (!running) return;
@@ -82,18 +96,23 @@ export default function App() {
     lastTimeRef.current = 0;
 
     const loop = (now: number) => {
-      const elapsed = lastTimeRef.current ? now - lastTimeRef.current : 16.67;
-      lastTimeRef.current = now;
-      accumRef.current += cyclesPerSecond * elapsed / 1000;
-      const toRun = Math.floor(accumRef.current);
-      accumRef.current -= toRun;
-      if (toRun > 0) tick(Math.min(toRun, 200_000));
+      if (isUnlimited) {
+        // Unlimited: run max cycles every frame
+        tick(200_000);
+      } else {
+        const elapsed = lastTimeRef.current ? now - lastTimeRef.current : 16.67;
+        lastTimeRef.current = now;
+        accumRef.current += cyclesPerSecond * elapsed / 1000;
+        const toRun = Math.floor(accumRef.current);
+        accumRef.current -= toRun;
+        if (toRun > 0) tick(Math.min(toRun, 200_000));
+      }
       rafRef.current = requestAnimationFrame(loop);
     };
 
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [running, tick, cyclesPerSecond]);
+  }, [running, tick, cyclesPerSecond, isUnlimited]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
@@ -145,7 +164,7 @@ export default function App() {
             ))}
           </select>
           <CtrlBtn
-            onClick={() => loadPreset(selectedPreset)}
+            onClick={() => { localStorage.setItem('s100_preset', selectedPreset); loadPreset(selectedPreset); }}
             color="#79c0ff"
             disabled={!wasmReady || running}
           >
