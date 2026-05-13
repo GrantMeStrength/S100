@@ -117,15 +117,15 @@ impl S100Card for DazzlerCard {
     fn io_read(&mut self, port: u8) -> Option<u8> {
         match port {
             PORT_NX => {
-                // Status register: bit 7 = "unblank" (1 during active display,
-                // 0 during vertical retrace). Simulate ~60 Hz vsync: the beam
-                // is in retrace for a small fraction of each frame. At 2 MHz
-                // with programs polling in a tight loop (~10 cycles per poll),
-                // a period of ~3200 reads ≈ one frame. Retrace occupies the
-                // last ~8% of the frame.
+                // Status register (active-low accent of the real hardware):
+                //   bit 7 = "unblank" (1 during active display, 0 during retrace)
+                //   bit 6 = vertical sync (1 during retrace, 0 during active)
+                // Many programs (including DZMBASIC) poll bit 6 for vsync.
+                // Simulate ~60 Hz: at 2 MHz with ~10 cycles per poll iteration,
+                // a period of 3200 reads ≈ one frame. Retrace ≈ last 8%.
                 self.vsync_counter = self.vsync_counter.wrapping_add(1);
                 let in_retrace = (self.vsync_counter % 3200) >= 2944;
-                let status = if in_retrace { 0x00 } else { 0x80 };
+                let status = if in_retrace { 0x40 } else { 0x80 };
                 Some(status)
             }
             PORT_CC => {
