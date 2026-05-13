@@ -15,6 +15,7 @@ const SS     = 128;           // sector size in bytes
 
 export const RAW_FLAT_SIZE = TRACKS * SPT * SS;           // 256,256
 export const DCDD_SIZE     = 77 * 32 * 137;               // 337,568 (Altair 88-DCDD)
+export const DCDD_SIZE_96  = DCDD_SIZE + 96;               // 337,664 (SIMH Altair format — 96-byte preamble)
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -67,8 +68,8 @@ export function normalizeDiskImage(
     };
   }
 
-  // ── 88-DCDD: exact 337,568-byte size ────────────────────────────────────────
-  if (input.length === DCDD_SIZE) {
+  // ── 88-DCDD: 337,568 or 337,664 bytes (SIMH adds a 96-byte preamble) ──────
+  if (input.length === DCDD_SIZE || input.length === DCDD_SIZE_96) {
     const warnings: string[] = [];
     if (controllerType === 'flat') {
       warnings.push(

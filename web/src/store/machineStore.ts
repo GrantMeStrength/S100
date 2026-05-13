@@ -159,6 +159,20 @@ export const ALTAIR_CPM_MACHINE = JSON.stringify({
   ],
 });
 
+export const ALTAIR_CPM_DAZZLER_MACHINE = JSON.stringify({
+  name: 'Altair 8800 CP/M 2.2 + Dazzler',
+  slots: [
+    { slot: 0, card: 'cpu_8080',    params: { speed_hz: 2_000_000 } },
+    { slot: 1, card: 'ram',         params: { base: 0, size: 65536 } },
+    { slot: 2, card: 'sio_88_2sio' },
+    { slot: 3, card: 'dcdd_88' },
+    { slot: 4, card: 'dazzler' },
+  ],
+  actions: [
+    { id: 'altair-boot-vector', type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 FF' }] } },
+  ],
+});
+
 export const ALTAIR_CPM_Z80_MACHINE = JSON.stringify({
   name: 'Altair Z80 CP/M 2.2',
   slots: [
@@ -286,6 +300,15 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     id: 'altair_cpm_z80',
     label: 'Altair Z80 — 64K CP/M 2.2',
     machine: ALTAIR_CPM_Z80_MACHINE,
+    cpm: true,
+  },
+  {
+    // Altair 8800 with Cromemco Dazzler graphics card.
+    // Load a Dazzler-compatible disk image (e.g. DZMBASIC.dsk) into drive A.
+    // At the CP/M A> prompt, run DAZON.COM to enable the Dazzler, then DZMBASIC.COM.
+    id: 'altair_cpm_dazzler',
+    label: 'Altair 8800 — CP/M 2.2 + Dazzler',
+    machine: ALTAIR_CPM_DAZZLER_MACHINE,
     cpm: true,
   },
   {
