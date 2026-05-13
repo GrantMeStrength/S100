@@ -164,7 +164,7 @@ export const ALTAIR_CPM_MACHINE = JSON.stringify({
 export const ALTAIR_CPM_DAZZLER_MACHINE = JSON.stringify({
   name: 'Altair 8800 CP/M 2.2 + Dazzler',
   slots: [
-    { slot: 0, card: 'cpu_8080',    params: { speed_hz: 2_000_000 } },
+    { slot: 0, card: 'cpu_z80',     params: { speed_hz: 4_000_000 } },
     { slot: 1, card: 'ram',         params: { base: 0, size: 65536 } },
     { slot: 2, card: 'sio_88_2sio' },
     { slot: 3, card: 'dcdd_88' },
