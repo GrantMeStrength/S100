@@ -2,12 +2,14 @@ import { create } from 'zustand';
 import type { MachineState, TraceEntry } from '../wasm/index';
 import * as wasm from '../wasm/index';
 import { buildBootVector, buildBios, buildCcp } from '../utils/cpm';
-import { normalizeDiskImage } from '../utils/diskFormat';
+import { normalizeDiskImage, RAW_FLAT_SIZE, DCDD_SIZE_96 } from '../utils/diskFormat';
 
 /** Prepend the Vite base URL to a public asset path. Handles GitHub Pages
  *  sub-directory deployments where BASE_URL = '/S100/' instead of '/'. */
 const pub = (path: string) =>
   `${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`;
+
+const DRIVE_LABELS = ['A', 'B', 'C', 'D'];
 
 // ── Slot / config types ────────────────────────────────────────────────────────
 
@@ -612,6 +614,8 @@ export interface MachineStore {
   sendInput: (s: string) => void;
   insertDisk: (drive: number, file: File) => void;
   ejectDisk: (drive: number) => void;
+  createBlankDisk: (drive: number) => void;
+  exportDisk: (drive: number) => void;
   tick: (cycles?: number) => void;
   clearTerminal: () => void;
 
@@ -897,6 +901,62 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       diskWarnings[drive]    = null;
       return { diskStatus, diskFormatLabel, diskWarnings };
     });
+  },
+
+  createBlankDisk: (drive) => {
+    const slots = get().slots;
+    const hasDcdd = slots.some(s => s.card === 'dcdd_88');
+    // Create a blank disk matching the active FDC format
+    const size = hasDcdd ? DCDD_SIZE_96 : RAW_FLAT_SIZE;
+    const blank = new Uint8Array(size); // all zeros = empty E5-free disk
+    // CP/M expects directory sectors filled with 0xE5
+    if (!hasDcdd) {
+      // Flat format: directory is on tracks 2–3 (sectors 1–26), offset = 2*26*128 = 6656
+      const dirStart = 2 * 26 * 128;
+      const dirEnd   = dirStart + 2 * 26 * 128; // 2 tracks of directory
+      blank.fill(0xE5, dirStart, Math.min(dirEnd, size));
+    } else {
+      // 88-DCDD: directory starts at track 2, 32 sectors × 137 bytes
+      // Fill the 128 data bytes of each 137-byte sector with 0xE5
+      const dirTrackStart = 2 * 32 * 137;
+      for (let s = 0; s < 64; s++) { // 2 tracks × 32 sectors
+        const sectorBase = dirTrackStart + s * 137;
+        // DCDD sector: bytes 0–8 are header/sync, bytes 9–136 are data
+        // SIMH format stores just the raw 137-byte sectors sequentially
+        // Fill entire sector data area with E5
+        blank.fill(0xE5, sectorBase, sectorBase + 137);
+      }
+    }
+    wasm.insertDisk(drive, blank);
+    const label = hasDcdd ? 'Blank (88-DCDD)' : 'Blank (SSSD)';
+    set(state => {
+      const diskStatus      = [...state.diskStatus];
+      const diskFormatLabel = [...state.diskFormatLabel];
+      const diskWarnings    = [...state.diskWarnings];
+      diskStatus[drive]      = label;
+      diskFormatLabel[drive] = hasDcdd ? '88-DCDD' : 'RAW';
+      diskWarnings[drive]    = null;
+      return { diskStatus, diskFormatLabel, diskWarnings };
+    });
+  },
+
+  exportDisk: (drive) => {
+    try {
+      const data = wasm.getDiskData(drive);
+      if (!data || data.length === 0) return;
+      const blob = new Blob([new Uint8Array(data)], { type: 'application/octet-stream' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      const name = get().diskStatus[drive];
+      a.download = name && !name.startsWith('Blank') ? name : `drive_${DRIVE_LABELS[drive]}.dsk`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Export disk failed:', e);
+    }
   },
 
   tick: (cycles = 32768) => {

@@ -79,6 +79,8 @@ export function DiskManager() {
   const diskWarnings    = useMachineStore(s => s.diskWarnings);
   const insertDisk      = useMachineStore(s => s.insertDisk);
   const ejectDisk       = useMachineStore(s => s.ejectDisk);
+  const createBlankDisk = useMachineStore(s => s.createBlankDisk);
+  const exportDisk      = useMachineStore(s => s.exportDisk);
   const wasmReady       = useMachineStore(s => s.wasmReady);
   const slots           = useMachineStore(s => s.slots);
 
@@ -189,13 +191,23 @@ export function DiskManager() {
                   onChange={handleFile(i)}
                 />
                 {diskStatus[i] ? (
-                  <DriveBtn onClick={() => { ejectDisk(i); setActiveWarning(null); }} color="#f85149" disabled={!wasmReady}>
-                    ⏏
-                  </DriveBtn>
+                  <>
+                    <DriveBtn onClick={() => exportDisk(i)} color="#79c0ff" disabled={!wasmReady} title="Save disk image">
+                      ↓
+                    </DriveBtn>
+                    <DriveBtn onClick={() => { ejectDisk(i); setActiveWarning(null); }} color="#f85149" disabled={!wasmReady} title="Eject">
+                      ⏏
+                    </DriveBtn>
+                  </>
                 ) : (
-                  <DriveBtn onClick={() => fileRefs[i].current?.click()} disabled={!wasmReady}>
-                    ▲
-                  </DriveBtn>
+                  <>
+                    <DriveBtn onClick={() => fileRefs[i].current?.click()} disabled={!wasmReady} title="Mount disk image">
+                      ▲
+                    </DriveBtn>
+                    <DriveBtn onClick={() => createBlankDisk(i)} color="#3fb950" disabled={!wasmReady} title="Create blank disk">
+                      +
+                    </DriveBtn>
+                  </>
                 )}
               </div>
 
@@ -279,17 +291,19 @@ export function DiskManager() {
 }
 
 function DriveBtn({
-  onClick, children, color = '#8b949e', disabled = false,
+  onClick, children, color = '#8b949e', disabled = false, title,
 }: {
   onClick: () => void;
   children: React.ReactNode;
   color?: string;
   disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      title={title}
       style={{
         background: 'transparent',
         border: '1px solid #30363d',
