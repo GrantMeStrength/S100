@@ -26,13 +26,14 @@ const PORT_CC: u8 = 0x0F; // color / control register
 
 pub struct DazzlerCard {
     name: String,
-    pub nx: u8, // bit7=enable, bits6-0=page
-    pub cc: u8, // bit5=color, bit4=x4
+    pub nx: u8,         // bit7=enable, bits6-0=page
+    pub cc: u8,         // bit5=color, bit4=x4
+    vsync_counter: u16, // free-running counter for vsync simulation
 }
 
 impl DazzlerCard {
     pub fn new(name: impl Into<String>) -> Self {
-        DazzlerCard { name: name.into(), nx: 0, cc: 0 }
+        DazzlerCard { name: name.into(), nx: 0, cc: 0, vsync_counter: 0 }
     }
 
     pub fn enabled(&self) -> bool { self.nx & 0x80 != 0 }
@@ -107,13 +108,32 @@ impl S100Card for DazzlerCard {
     fn reset(&mut self) {
         self.nx = 0;
         self.cc = 0;
+        self.vsync_counter = 0;
     }
 
     fn memory_read(&mut self, _addr: u16) -> Option<u8> { None }
     fn memory_write(&mut self, _addr: u16, _data: u8) {}
 
     fn io_read(&mut self, port: u8) -> Option<u8> {
-        if port == PORT_NX { Some(0) } else { None } // vsync always low
+        match port {
+            PORT_NX => {
+                // Status register: bit 7 = "unblank" (1 during active display,
+                // 0 during vertical retrace). Simulate ~60 Hz vsync: the beam
+                // is in retrace for a small fraction of each frame. At 2 MHz
+                // with programs polling in a tight loop (~10 cycles per poll),
+                // a period of ~3200 reads ≈ one frame. Retrace occupies the
+                // last ~8% of the frame.
+                self.vsync_counter = self.vsync_counter.wrapping_add(1);
+                let in_retrace = (self.vsync_counter % 3200) >= 2944;
+                let status = if in_retrace { 0x00 } else { 0x80 };
+                Some(status)
+            }
+            PORT_CC => {
+                // Return current color/control register (readable on real hardware)
+                Some(self.cc)
+            }
+            _ => None,
+        }
     }
 
     fn io_write(&mut self, port: u8, data: u8) {
