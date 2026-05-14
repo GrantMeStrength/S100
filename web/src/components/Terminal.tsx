@@ -137,7 +137,7 @@ export function Terminal() {
             cursor: 'text',
             background: '#0d1117',
             display: 'block',
-            opacity: focused ? 1 : 0.55,
+            opacity: focused ? 1 : 0.75,
             transition: 'opacity 0.15s, outline-color 0.15s',
           }}
         />

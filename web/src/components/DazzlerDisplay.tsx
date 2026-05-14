@@ -57,7 +57,7 @@ export function DazzlerDisplay() {
   return (
     <div>
       <div style={{
-        fontSize: 10,
+        fontSize: 11,
         color: '#8b949e',
         fontFamily: 'monospace',
         letterSpacing: 1,
@@ -79,7 +79,7 @@ export function DazzlerDisplay() {
           imageRendering: 'pixelated',
         }}
       />
-      <div style={{ fontSize: 9, color: '#484f58', marginTop: 2, fontFamily: 'monospace' }}>
+      <div style={{ fontSize: 10, color: '#6e7681', marginTop: 2, fontFamily: 'monospace' }}>
         Port 0x0E: NX (addr+enable) · 0x0F: CC (color/X4)
       </div>
     </div>

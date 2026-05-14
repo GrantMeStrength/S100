@@ -74,8 +74,7 @@ export function ChassisView() {
         </div>
 
         {actions.length === 0 ? (
-          <div style={{ color: '#484f58', fontSize: 10, fontStyle: 'italic', padding: '4px 0' }}>
-            No actions — add a Toggle to pre-load bytes into RAM
+          <div style={{ color: '#484f58', fontSize: 10, fontStyle: 'italic', padding: '4px 0' }}>            No actions — add a Toggle to pre-load bytes into RAM
           </div>
         ) : (
           <>
@@ -97,7 +96,7 @@ export function ChassisView() {
                     border: '1px solid #2ea043',
                     borderRadius: 2,
                     padding: '1px 5px',
-                    fontSize: 9,
+                    fontSize: 10,
                     color: '#2ea043',
                     fontFamily: 'monospace',
                     flexShrink: 0,
@@ -180,7 +179,7 @@ export function ChassisView() {
                   transition: 'border-color 0.1s, background 0.1s',
                 }}
               >
-                <span style={{ color: '#484f58', fontSize: 9, width: 14, textAlign: 'right', flexShrink: 0, fontFamily: 'monospace' }}>
+                <span style={{ color: '#484f58', fontSize: 10, width: 14, textAlign: 'right', flexShrink: 0, fontFamily: 'monospace' }}>
                   {String(i).padStart(2, '0')}
                 </span>
 
@@ -195,7 +194,7 @@ export function ChassisView() {
                         border: `1px solid ${info.accent}`,
                         borderRadius: 2,
                         padding: '1px 5px',
-                        fontSize: 9,
+                        fontSize: 10,
                         color: info.accent,
                         fontFamily: 'monospace',
                         cursor: 'grab',
@@ -224,7 +223,7 @@ export function ChassisView() {
                     >✕</button>
                   </>
                 ) : (
-                  <span style={{ color: '#30363d', fontSize: 10, fontStyle: 'italic', flex: 1 }}>
+                  <span style={{ color: '#484f58', fontSize: 10, fontStyle: 'italic', flex: 1 }}>
                     {over ? '↓ drop here' : 'empty'}
                   </span>
                 )}

@@ -57,7 +57,7 @@ export function ProgrammedOutputPanel() {
         textTransform: 'uppercase',
         marginBottom: 6,
       }}>
-        Programmed Output  <span style={{ color: '#484f58', fontSize: 9 }}>port 0xFF</span>
+        Programmed Output  <span style={{ color: '#6e7681', fontSize: 10 }}>port 0xFF</span>
       </div>
 
       {/* Panel body — styled after the IMSAI 8080 front panel section */}
@@ -84,8 +84,8 @@ export function ProgrammedOutputPanel() {
         }}>
           {Array.from({ length: 8 }, (_, i) => (
             <span key={i} style={{
-              color: '#484f58',
-              fontSize: 8,
+              color: '#6e7681',
+              fontSize: 10,
               fontFamily: 'monospace',
               width: 14,
               textAlign: 'center',
@@ -104,13 +104,13 @@ export function ProgrammedOutputPanel() {
           paddingTop: 5,
           marginTop: 1,
         }}>
-          <span style={{ color: '#484f58', fontSize: 9, fontFamily: 'monospace' }}>
+          <span style={{ color: '#6e7681', fontSize: 10, fontFamily: 'monospace' }}>
             OUT 0xFF =
           </span>
           <span style={{ color: '#f85149', fontSize: 11, fontFamily: 'monospace', fontWeight: 600 }}>
             {value.toString(16).toUpperCase().padStart(2, '0')}H
           </span>
-          <span style={{ color: '#6e7681', fontSize: 9, fontFamily: 'monospace' }}>
+          <span style={{ color: '#8b949e', fontSize: 10, fontFamily: 'monospace' }}>
             ({value.toString(2).padStart(8, '0')}b)
           </span>
         </div>

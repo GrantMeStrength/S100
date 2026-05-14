@@ -165,7 +165,7 @@ export function DiskManager() {
                 {fmt && (
                   <span style={{
                     fontFamily: 'monospace',
-                    fontSize: 9,
+                    fontSize: 10,
                     color: isError ? '#f85149' : hasWarnings ? '#e3b341' : '#8b949e',
                     background: '#161b22',
                     border: `1px solid ${isError ? '#f85149' : hasWarnings ? '#e3b341' : '#30363d'}`,
@@ -280,7 +280,7 @@ export function DiskManager() {
             marginTop: 8,
             paddingTop: 6,
             borderTop: '1px solid #30363d',
-            color: '#484f58',
+            color: '#6e7681',
           }}>
             ⚠ {GENERAL_NOTE}
           </div>

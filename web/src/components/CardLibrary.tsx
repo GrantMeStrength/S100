@@ -60,8 +60,8 @@ export function CardLibrary() {
                 {info.label}
               </div>
               <div style={{
-                color: '#6e7681',
-                fontSize: 9,
+                color: '#8b949e',
+                fontSize: 10,
                 lineHeight: 1.5,
                 marginLeft: 2,
               }}>

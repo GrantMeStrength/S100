@@ -75,8 +75,8 @@ export function BusAnalyzer() {
             <div key={op} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
               <Led on={last?.op === op} color={color} />
               <span style={{
-                color: last?.op === op ? color : '#484f58',
-                fontSize: 8,
+                color: last?.op === op ? color : '#6e7681',
+                fontSize: 10,
                 fontFamily: 'monospace',
                 letterSpacing: 0.5,
               }}>{label}</span>
