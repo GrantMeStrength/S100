@@ -273,7 +273,7 @@ export default function App() {
           display: 'flex',
           flexDirection: 'column',
           gap: 14,
-          overflowY: 'auto',
+          overflowY: 'scroll',
           flexShrink: 0,
         }}>
           <MachinePhoto presetId={selectedPreset} />

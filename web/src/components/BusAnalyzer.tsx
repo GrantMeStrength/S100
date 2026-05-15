@@ -45,8 +45,10 @@ function DataBus({ data }: { data: number }) {
 }
 
 export function BusAnalyzer() {
-  const entries = useMachineStore(s => s.traceEntries);
-  const last = entries[entries.length - 1];
+  const lastAddr   = useMachineStore(s => { const e = s.traceEntries; return e.length > 0 ? e[e.length - 1].address : 0; });
+  const lastData   = useMachineStore(s => { const e = s.traceEntries; return e.length > 0 ? e[e.length - 1].data : 0; });
+  const lastOp     = useMachineStore(s => { const e = s.traceEntries; return e.length > 0 ? e[e.length - 1].op : ''; });
+  const lastSource = useMachineStore(s => { const e = s.traceEntries; return e.length > 0 ? e[e.length - 1].source : '—'; });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -62,8 +64,8 @@ export function BusAnalyzer() {
         flexDirection: 'column',
         gap: 6,
       }}>
-        <AddrBus addr={last?.address ?? 0} />
-        <DataBus data={last?.data ?? 0} />
+        <AddrBus addr={lastAddr} />
+        <DataBus data={lastData} />
 
         <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
           {([
@@ -73,9 +75,9 @@ export function BusAnalyzer() {
             ['IoWrite',  'IOW',  '#f0883e'],
           ] as const).map(([op, label, color]) => (
             <div key={op} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-              <Led on={last?.op === op} color={color} />
+              <Led on={lastOp === op} color={color} />
               <span style={{
-                color: last?.op === op ? color : '#6e7681',
+                color: lastOp === op ? color : '#6e7681',
                 fontSize: 10,
                 fontFamily: 'monospace',
                 letterSpacing: 0.5,
@@ -84,7 +86,7 @@ export function BusAnalyzer() {
           ))}
           <div style={{ marginLeft: 8, display: 'flex', alignItems: 'center' }}>
             <span style={{ color: '#8b949e', fontSize: 10 }}>
-              src: <span style={{ color: '#c9d1d9' }}>{last?.source ?? '—'}</span>
+              src: <span style={{ color: '#c9d1d9' }}>{lastSource}</span>
             </span>
           </div>
         </div>
