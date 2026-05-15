@@ -2,6 +2,8 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const __wbg_emulator_free: (a: number, b: number) => void;
+export const emulator_addBreakpoint: (a: number, b: number) => void;
+export const emulator_clearBreakpoints: (a: number) => void;
 export const emulator_getDazzlerFrame: (a: number) => [number, number];
 export const emulator_getDiskData: (a: number, b: number) => [number, number];
 export const emulator_getSerialOutput: (a: number) => [number, number];
@@ -13,6 +15,7 @@ export const emulator_loadBinary: (a: number, b: number, c: number, d: number) =
 export const emulator_loadMachine: (a: number, b: number, c: number) => [number, number];
 export const emulator_new: () => number;
 export const emulator_readMemory: (a: number, b: number) => number;
+export const emulator_removeBreakpoint: (a: number, b: number) => void;
 export const emulator_reset: (a: number) => void;
 export const emulator_sendSerialInput: (a: number, b: number) => void;
 export const emulator_sendSerialString: (a: number, b: number, c: number) => void;

@@ -136,6 +136,24 @@ impl Emulator {
     pub fn get_vdm_frame(&self) -> Vec<u8> {
         self.machine.get_vdm_frame()
     }
+
+    /// Add a breakpoint at the given address.
+    #[wasm_bindgen(js_name = addBreakpoint)]
+    pub fn add_breakpoint(&mut self, addr: u16) {
+        self.machine.breakpoints.insert(addr);
+    }
+
+    /// Remove a breakpoint at the given address.
+    #[wasm_bindgen(js_name = removeBreakpoint)]
+    pub fn remove_breakpoint(&mut self, addr: u16) {
+        self.machine.breakpoints.remove(&addr);
+    }
+
+    /// Remove all breakpoints.
+    #[wasm_bindgen(js_name = clearBreakpoints)]
+    pub fn clear_breakpoints(&mut self) {
+        self.machine.breakpoints.clear();
+    }
 }
 
 #[cfg(test)]

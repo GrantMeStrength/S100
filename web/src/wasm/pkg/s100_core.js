@@ -12,6 +12,19 @@ export class Emulator {
         wasm.__wbg_emulator_free(ptr, 0);
     }
     /**
+     * Add a breakpoint at the given address.
+     * @param {number} addr
+     */
+    addBreakpoint(addr) {
+        wasm.emulator_addBreakpoint(this.__wbg_ptr, addr);
+    }
+    /**
+     * Remove all breakpoints.
+     */
+    clearBreakpoints() {
+        wasm.emulator_clearBreakpoints(this.__wbg_ptr);
+    }
+    /**
      * Render the Dazzler frame buffer to RGBA pixels.
      * Returns [width_lo, width_hi, height_lo, height_hi, ...rgba_bytes],
      * or an empty array if no Dazzler card is present or the display is disabled.
@@ -143,6 +156,13 @@ export class Emulator {
     readMemory(addr) {
         const ret = wasm.emulator_readMemory(this.__wbg_ptr, addr);
         return ret;
+    }
+    /**
+     * Remove a breakpoint at the given address.
+     * @param {number} addr
+     */
+    removeBreakpoint(addr) {
+        wasm.emulator_removeBreakpoint(this.__wbg_ptr, addr);
     }
     /**
      * Reset CPU and all cards.

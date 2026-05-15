@@ -5,6 +5,14 @@ export class Emulator {
     free(): void;
     [Symbol.dispose](): void;
     /**
+     * Add a breakpoint at the given address.
+     */
+    addBreakpoint(addr: number): void;
+    /**
+     * Remove all breakpoints.
+     */
+    clearBreakpoints(): void;
+    /**
      * Render the Dazzler frame buffer to RGBA pixels.
      * Returns [width_lo, width_hi, height_lo, height_hi, ...rgba_bytes],
      * or an empty array if no Dazzler card is present or the display is disabled.
@@ -51,6 +59,10 @@ export class Emulator {
      */
     readMemory(addr: number): number;
     /**
+     * Remove a breakpoint at the given address.
+     */
+    removeBreakpoint(addr: number): void;
+    /**
      * Reset CPU and all cards.
      */
     reset(): void;
@@ -85,6 +97,8 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_emulator_free: (a: number, b: number) => void;
+    readonly emulator_addBreakpoint: (a: number, b: number) => void;
+    readonly emulator_clearBreakpoints: (a: number) => void;
     readonly emulator_getDazzlerFrame: (a: number) => [number, number];
     readonly emulator_getDiskData: (a: number, b: number) => [number, number];
     readonly emulator_getSerialOutput: (a: number) => [number, number];
@@ -96,6 +110,7 @@ export interface InitOutput {
     readonly emulator_loadMachine: (a: number, b: number, c: number) => [number, number];
     readonly emulator_new: () => number;
     readonly emulator_readMemory: (a: number, b: number) => number;
+    readonly emulator_removeBreakpoint: (a: number, b: number) => void;
     readonly emulator_reset: (a: number) => void;
     readonly emulator_sendSerialInput: (a: number, b: number) => void;
     readonly emulator_sendSerialString: (a: number, b: number, c: number) => void;

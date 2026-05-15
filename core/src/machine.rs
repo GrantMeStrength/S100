@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -108,6 +110,8 @@ pub struct MachineState {
     pub bus_cycles: u64,
     /// Last value written to I/O port 0xFF (IMSAI Programmed Output latch).
     pub programmed_output: u8,
+    /// True when the last step() stopped due to hitting a breakpoint.
+    pub breakpoint_hit: bool,
 }
 
 // ── Machine ───────────────────────────────────────────────────────────────────
@@ -131,6 +135,10 @@ pub struct Machine {
     pub vdm_idx: Option<usize>,
     /// IMSAI Programmed Output latch — captures the last byte written to port 0xFF.
     pub programmed_output: u8,
+    /// Breakpoint addresses — execution stops before running the instruction at any of these.
+    pub breakpoints: HashSet<u16>,
+    /// Set to true when execution stops due to hitting a breakpoint.
+    pub breakpoint_hit: bool,
 }
 
 impl Machine {
@@ -147,6 +155,8 @@ impl Machine {
             dazzler_idx: None,
             vdm_idx: None,
             programmed_output: 0,
+            breakpoints: HashSet::new(),
+            breakpoint_hit: false,
         }
     }
 
@@ -165,6 +175,7 @@ impl Machine {
         self.dazzler_idx = None;
         self.vdm_idx = None;
         self.programmed_output = 0;
+        // breakpoints are intentionally preserved across config reloads
 
         // Validate: exactly one CPU card
         let cpu_count = config.slots.iter().filter(|s| s.card.starts_with("cpu_")).count();
@@ -359,9 +370,23 @@ impl Machine {
     }
 
     /// Run for (at least) `cycles` T-states. Returns actual cycles run.
+    /// Stops early if a breakpoint is hit (sets `breakpoint_hit`).
     pub fn step(&mut self, cycles: u32) -> u32 {
         let mut elapsed = 0u32;
+        self.breakpoint_hit = false;
         while elapsed < cycles {
+            // Check breakpoints before executing the next instruction
+            if !self.breakpoints.is_empty() {
+                let pc = match self.active_cpu {
+                    ActiveCpu::I8080 => self.cpu.pc,
+                    ActiveCpu::Z80 => self.cpu_z80.as_ref().map_or(self.cpu.pc, |c| c.pc),
+                };
+                if elapsed > 0 && self.breakpoints.contains(&pc) {
+                    self.breakpoint_hit = true;
+                    break;
+                }
+            }
+
             elapsed += match self.active_cpu {
                 ActiveCpu::I8080 => self.cpu.step(&mut self.bus),
                 ActiveCpu::Z80 => self.cpu_z80.as_mut().map(|cpu| cpu.step(&mut self.bus)).unwrap_or_else(|| self.cpu.step(&mut self.bus)),
@@ -562,6 +587,7 @@ impl Machine {
             cards: self.bus.cards.iter().map(|c| c.name().to_owned()).collect(),
             bus_cycles: self.bus.cycle_count,
             programmed_output: self.programmed_output,
+            breakpoint_hit: self.breakpoint_hit,
         }
     }
 

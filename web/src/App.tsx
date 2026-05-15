@@ -12,6 +12,7 @@ import { ProgrammedOutputPanel } from './components/ProgrammedOutputPanel';
 import { MemoryView } from './components/MemoryView';
 import { DazzlerDisplay } from './components/DazzlerDisplay';
 import { VdmDisplay } from './components/VdmDisplay';
+import { DisassemblerView } from './components/DisassemblerView';
 import { parseIntelHex, hexLoadSummary } from './utils/intelHex';
 import * as wasm from './wasm/index';
 
@@ -39,7 +40,7 @@ export default function App() {
   const [selectedPreset, setSelectedPreset] = useState(
     SYSTEM_PRESETS.some(p => p.id === savedPreset) ? savedPreset : SYSTEM_PRESETS[1].id
   );
-  const [rightTab, setRightTab] = useState<'trace' | 'memory'>('trace');
+  const [rightTab, setRightTab] = useState<'disasm' | 'trace' | 'memory'>('disasm');
 
   const hasDazzler = slots.some(s => s.card === 'dazzler');
   const hasVdm     = slots.some(s => s.card === 'vdm');
@@ -305,7 +306,7 @@ export default function App() {
           <Divider />
           {/* Tab bar */}
           <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #30363d', flexShrink: 0 }}>
-            {(['trace', 'memory'] as const).map(tab => (
+            {(['disasm', 'trace', 'memory'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setRightTab(tab)}
@@ -316,12 +317,12 @@ export default function App() {
                   fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1,
                 }}
               >
-                {tab === 'trace' ? 'Bus Trace' : 'Memory'}
+                {tab === 'disasm' ? 'Disassembly' : tab === 'trace' ? 'Bus Trace' : 'Memory'}
               </button>
             ))}
           </div>
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            {rightTab === 'trace' ? <TraceViewer /> : <MemoryView />}
+            {rightTab === 'disasm' ? <DisassemblerView /> : rightTab === 'trace' ? <TraceViewer /> : <MemoryView />}
           </div>
         </div>
       </div>

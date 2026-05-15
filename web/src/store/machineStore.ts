@@ -602,6 +602,11 @@ export interface MachineStore {
   activeDiskUrl: string | null;
   activeDiskLabel: string | null;
 
+  // Breakpoints
+  breakpoints: Set<number>;
+  toggleBreakpoint: (addr: number) => void;
+  clearBreakpoints: () => void;
+
   // Actions
   initWasm: () => Promise<void>;
   loadMachine: (json: string) => void;
@@ -658,6 +663,7 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   activeBootRomAddr: 0xFF00,
   activeDiskUrl: null,
   activeDiskLabel: null,
+  breakpoints: new Set<number>(),
 
   initWasm: async () => {
     try {
@@ -983,6 +989,11 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
 
     const machineState = wasm.getState();
 
+    // Auto-stop when a breakpoint is hit
+    if (machineState.breakpoint_hit && get().running) {
+      get().stop();
+    }
+
     const cursor = get().traceCursor;
     const newEntries = wasm.getTrace(cursor, 128);
     const newCursor = wasm.traceTotal();
@@ -1137,5 +1148,22 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       }
     }
     set({ actionsApplied: true, error: null });
+  },
+
+  toggleBreakpoint: (addr: number) => {
+    const bp = new Set(get().breakpoints);
+    if (bp.has(addr)) {
+      bp.delete(addr);
+      wasm.removeBreakpoint(addr);
+    } else {
+      bp.add(addr);
+      wasm.addBreakpoint(addr);
+    }
+    set({ breakpoints: bp });
+  },
+
+  clearBreakpoints: () => {
+    wasm.clearBreakpoints();
+    set({ breakpoints: new Set<number>() });
   },
 }));

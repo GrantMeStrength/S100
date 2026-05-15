@@ -77,6 +77,8 @@ export interface MachineState {
   bus_cycles: number;
   /** Last byte written to I/O port 0xFF — IMSAI Programmed Output latch. */
   programmed_output: number;
+  /** True when the last step() stopped due to hitting a breakpoint. */
+  breakpoint_hit: boolean;
 }
 
 export function getState(): MachineState {
@@ -141,4 +143,16 @@ export function getDazzlerFrame(): Uint8Array {
 
 export function getVdmFrame(): Uint8Array {
   return getEmulator().getVdmFrame();
+}
+
+export function addBreakpoint(addr: number): void {
+  getEmulator().addBreakpoint(addr);
+}
+
+export function removeBreakpoint(addr: number): void {
+  getEmulator().removeBreakpoint(addr);
+}
+
+export function clearBreakpoints(): void {
+  getEmulator().clearBreakpoints();
 }
