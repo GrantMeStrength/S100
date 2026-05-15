@@ -82,13 +82,14 @@ export function DiskManager() {
   const createBlankDisk = useMachineStore(s => s.createBlankDisk);
   const exportDisk      = useMachineStore(s => s.exportDisk);
   const wasmReady       = useMachineStore(s => s.wasmReady);
-  const slots           = useMachineStore(s => s.slots);
+  // Derive a stable string of card IDs so we don't re-render every tick
+  const cardIdKey       = useMachineStore(s => s.slots.map(sl => sl.card).join(','));
 
   const [activeWarning, setActiveWarning] = useState<number | null>(null);
   const [showHelp, setShowHelp] = useState(false);
 
   // Find which compat entry matches the current machine's card set
-  const cardIds = slots.map(s => s.card);
+  const cardIds = cardIdKey.split(',');
   const compat  = COMPAT_TABLE.find(c => c.cards.some(id => cardIds.includes(id)));
 
   const fileRefs = [

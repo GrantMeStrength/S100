@@ -28,22 +28,25 @@ export default function App() {
   const wasmReady   = useMachineStore(s => s.wasmReady);
   const error       = useMachineStore(s => s.error);
   const mode        = useMachineStore(s => s.mode);
-  const slots       = useMachineStore(s => s.slots);
 
-  // Read CPU speed from the cpu_8080 card params
-  const cpuCard = slots.find(s => s.card === 'cpu_8080' || s.card.startsWith('cpu_'));
+  // Derive stable selectors from slots to avoid re-renders every tick
+  const cpuSpeedHz  = useMachineStore(s => {
+    const cpu = s.slots.find(sl => sl.card === 'cpu_8080' || sl.card.startsWith('cpu_'));
+    return (cpu?.params?.speed_hz as number) ?? 2_000_000;
+  });
+  const hasDazzler  = useMachineStore(s => s.slots.some(sl => sl.card === 'dazzler'));
+  const hasVdm      = useMachineStore(s => s.slots.some(sl => sl.card === 'vdm'));
+  const cpuLabel    = useMachineStore(s => s.slots.some(sl => sl.card === 'cpu_z80') ? 'Zilog Z80' : 'Intel 8080');
+
   // 0 = unlimited (run as fast as possible each frame)
-  const isUnlimited = (cpuCard?.params?.speed_hz as number) === 0;
-  const cyclesPerSecond = isUnlimited ? 0 : Math.max(1, (cpuCard?.params?.speed_hz as number) ?? 2_000_000);
+  const isUnlimited = cpuSpeedHz === 0;
+  const cyclesPerSecond = isUnlimited ? 0 : Math.max(1, cpuSpeedHz);
 
   const savedPreset = localStorage.getItem('s100_preset') ?? SYSTEM_PRESETS[1].id;
   const [selectedPreset, setSelectedPreset] = useState(
     SYSTEM_PRESETS.some(p => p.id === savedPreset) ? savedPreset : SYSTEM_PRESETS[1].id
   );
   const [rightTab, setRightTab] = useState<'disasm' | 'trace' | 'memory'>('disasm');
-
-  const hasDazzler = slots.some(s => s.card === 'dazzler');
-  const hasVdm     = slots.some(s => s.card === 'vdm');
 
   // Intel HEX loader
   const hexInputRef = useRef<HTMLInputElement>(null);
@@ -132,7 +135,7 @@ export default function App() {
           S-100 VIRTUAL WORKBENCH
         </span>
         <span style={{ color: '#8b949e', fontSize: 11 }}>
-          {slots.some(s => s.card === 'cpu_z80') ? 'Zilog Z80' : 'Intel 8080'}
+          {cpuLabel}
         </span>
         {mode === 'cpm' && (
           <span style={{

@@ -8,11 +8,10 @@ const NUM_LINES = 32;
 export function DisassemblerView() {
   const state   = useMachineStore(s => s.machineState);
   const running = useMachineStore(s => s.running);
-  const slots   = useMachineStore(s => s.slots);
+  const isZ80   = useMachineStore(s => s.slots.some(sl => sl.card === 'cpu_z80'));
   const breakpoints  = useMachineStore(s => s.breakpoints);
   const toggleBp     = useMachineStore(s => s.toggleBreakpoint);
 
-  const isZ80 = slots.some(s => s.card === 'cpu_z80');
   const pc = state?.cpu.pc ?? 0;
 
   // Allow user to pin the view to an address instead of following PC
