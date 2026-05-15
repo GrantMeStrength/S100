@@ -93,19 +93,17 @@ export function ChassisView() {
     <>
       {/* ACTIONS section — shown above the chassis slot grid */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ color: '#8b949e', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>
-            Actions
-          </span>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {(['toggle', 'set_pc', 'io_out', 'fill'] as const).map(t => (
-              <button
-                key={t}
-                onClick={() => addAction(t)}
-                style={{ background: 'none', border: '1px dashed #30363d', borderRadius: 3, color: '#8b949e', cursor: 'pointer', fontSize: 9, padding: '2px 6px', fontFamily: 'monospace' }}
-              >+ {ACTION_LABELS[t]}</button>
-            ))}
-          </div>
+        <span style={{ color: '#8b949e', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>
+          Actions
+        </span>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {(['toggle', 'set_pc', 'io_out', 'fill'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => addAction(t)}
+              style={{ background: 'none', border: '1px dashed #30363d', borderRadius: 3, color: '#8b949e', cursor: 'pointer', fontSize: 10, padding: '3px 8px', fontFamily: 'monospace' }}
+            >+ {ACTION_LABELS[t]}</button>
+          ))}
         </div>
 
         {actions.length === 0 ? (
