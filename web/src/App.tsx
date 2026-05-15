@@ -283,9 +283,9 @@ export default function App() {
           <RegisterView />
           <ProgrammedOutputPanel />
           <Divider />
-          <BusAnalyzer />
-          <Divider />
           <DiskManager />
+          <Divider />
+          <BusAnalyzer />
         </div>
 
         {/* Right column: terminal + tabbed trace/memory */}
