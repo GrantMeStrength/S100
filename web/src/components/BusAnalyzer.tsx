@@ -67,7 +67,7 @@ export function BusAnalyzer() {
         <AddrBus addr={lastAddr} />
         <DataBus data={lastData} />
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
           {([
             ['MemRead',  'MEMR', '#79c0ff'],
             ['MemWrite', 'MEMW', '#ffa657'],
@@ -84,11 +84,11 @@ export function BusAnalyzer() {
               }}>{label}</span>
             </div>
           ))}
-          <div style={{ marginLeft: 8, display: 'flex', alignItems: 'center' }}>
-            <span style={{ color: '#8b949e', fontSize: 10 }}>
-              src: <span style={{ color: '#c9d1d9' }}>{lastSource}</span>
-            </span>
-          </div>
+        </div>
+        <div style={{ marginTop: 4 }}>
+          <span style={{ color: '#8b949e', fontSize: 10 }}>
+            src: <span style={{ color: '#c9d1d9', fontFamily: 'monospace' }}>{lastSource}</span>
+          </span>
         </div>
       </div>
     </div>

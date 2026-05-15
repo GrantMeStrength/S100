@@ -90,14 +90,14 @@ export function RegisterView() {
         {isZ80 && <Reg16 label="IY" value={cpu.iy!} />}
 
         {/* Flags */}
-        <div style={{ borderTop: '1px solid #21262d', marginTop: 2, paddingTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ borderTop: '1px solid #21262d', marginTop: 2, paddingTop: 4, display: 'flex', gap: 6 }}>
           <Flag label="S"  value={cpu.flags.s}  />
           <Flag label="Z"  value={cpu.flags.z}  />
           <Flag label="AC" value={cpu.flags.ac} />
           <Flag label="P"  value={cpu.flags.p}  />
           <Flag label="CY" value={cpu.flags.cy} />
           <Flag label={isZ80 ? 'IFF1' : 'IE'} value={cpu.interrupts_enabled} />
-          {cpu.halted && <span style={{ color: '#f85149', fontSize: 12, fontWeight: 'bold' }}>HALT</span>}
+          <span style={{ color: cpu.halted ? '#f85149' : 'transparent', fontSize: 12, fontWeight: 'bold' }}>HALT</span>
         </div>
 
         {/* Cycles */}
