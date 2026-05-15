@@ -62,8 +62,12 @@ export function CardLibrary() {
               <div style={{
                 color: '#8b949e',
                 fontSize: 10,
-                lineHeight: 1.5,
+                lineHeight: 1.4,
                 marginLeft: 2,
+                overflow: 'hidden',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical' as const,
               }}>
                 {info.description}
               </div>
