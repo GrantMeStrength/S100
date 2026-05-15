@@ -109,7 +109,7 @@ function EntryRow({ entry, onChange, onDelete, error }: RowProps) {
 }
 
 interface Props {
-  action: ActionEntry;
+  action: ActionEntry & { type: 'toggle' };
   onClose: () => void;
 }
 
@@ -154,7 +154,7 @@ export function ToggleConfigModal({ action, onClose }: Props) {
       const err = validateEntry(e);
       if (err) { setSubmitError(err); return; }
     }
-    updateAction(action.id, { entries: normalised });
+    updateAction(action.id, { params: { entries: normalised } });
     onClose();
   };
 

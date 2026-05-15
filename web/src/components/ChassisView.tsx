@@ -4,8 +4,38 @@ import type { SlotEntry, ActionEntry } from '../store/machineStore';
 import { getCardType, CARD_TYPES } from '../config/cardTypes';
 import { CardConfigModal } from './CardConfigModal';
 import { ToggleConfigModal } from './ToggleConfigModal';
+import { SimpleActionModal } from './SimpleActionModal';
 
 const NUM_SLOTS = 8;
+
+const ACTION_LABELS: Record<string, string> = {
+  toggle: 'Toggle',
+  set_pc: 'Set PC',
+  io_out: 'I/O Out',
+  fill:   'Fill',
+};
+
+const ACTION_COLORS: Record<string, { bg: string; border: string }> = {
+  toggle: { bg: '#0f2d0f', border: '#2ea043' },
+  set_pc: { bg: '#0d1a30', border: '#3a9fd4' },
+  io_out: { bg: '#2e1a0d', border: '#e67e22' },
+  fill:   { bg: '#1a0d2e', border: '#a855f7' },
+};
+
+function actionSummary(action: ActionEntry): string {
+  switch (action.type) {
+    case 'toggle':
+      return action.params.entries.length === 0
+        ? '(no entries)'
+        : action.params.entries.map(e => `${e.addr}:${e.bytes.replace(/\s/g, '').length / 2}B`).join(', ');
+    case 'set_pc':
+      return `PC ← 0x${action.params.addr}`;
+    case 'io_out':
+      return `OUT 0x${action.params.port} ← 0x${action.params.value}`;
+    case 'fill':
+      return `0x${action.params.start}–0x${action.params.end} ← 0x${action.params.value}`;
+  }
+}
 
 const iconBtn: React.CSSProperties = {
   background: 'none',
@@ -67,14 +97,19 @@ export function ChassisView() {
           <span style={{ color: '#8b949e', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>
             Actions
           </span>
-          <button
-            onClick={addAction}
-            style={{ background: 'none', border: '1px dashed #30363d', borderRadius: 3, color: '#8b949e', cursor: 'pointer', fontSize: 10, padding: '2px 8px', fontFamily: 'monospace' }}
-          >+ Toggle</button>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {(['toggle', 'set_pc', 'io_out', 'fill'] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => addAction(t)}
+                style={{ background: 'none', border: '1px dashed #30363d', borderRadius: 3, color: '#8b949e', cursor: 'pointer', fontSize: 9, padding: '2px 6px', fontFamily: 'monospace' }}
+              >+ {ACTION_LABELS[t]}</button>
+            ))}
+          </div>
         </div>
 
         {actions.length === 0 ? (
-          <div style={{ color: '#484f58', fontSize: 10, fontStyle: 'italic', padding: '4px 0' }}>            No actions — add a Toggle to pre-load bytes into RAM
+          <div style={{ color: '#484f58', fontSize: 10, fontStyle: 'italic', padding: '4px 0' }}>            No actions — add actions to configure the machine before Run
           </div>
         ) : (
           <>
@@ -92,23 +127,21 @@ export function ChassisView() {
                   }}
                 >
                   <div style={{
-                    background: '#0f2d0f',
-                    border: '1px solid #2ea043',
+                    background: ACTION_COLORS[action.type].bg,
+                    border: `1px solid ${ACTION_COLORS[action.type].border}`,
                     borderRadius: 2,
                     padding: '1px 5px',
                     fontSize: 10,
-                    color: '#2ea043',
+                    color: ACTION_COLORS[action.type].border,
                     fontFamily: 'monospace',
                     flexShrink: 0,
                     letterSpacing: 0.5,
                   }}>
-                    TOGGLE
+                    {ACTION_LABELS[action.type]}
                   </div>
 
                   <span style={{ color: '#c9d1d9', fontSize: 11, flex: 1, fontFamily: 'monospace' }}>
-                    {action.params.entries.length === 0
-                      ? '(no entries)'
-                      : action.params.entries.map(e => `${e.addr}:${e.bytes.replace(/\s/g,'').length/2}B`).join(', ')}
+                    {actionSummary(action)}
                   </span>
 
                   <button
@@ -241,8 +274,14 @@ export function ChassisView() {
         />
       )}
 
-      {configAction && (
+      {configAction && configAction.type === 'toggle' && (
         <ToggleConfigModal
+          action={configAction as ActionEntry & { type: 'toggle' }}
+          onClose={() => setConfigAction(null)}
+        />
+      )}
+      {configAction && configAction.type !== 'toggle' && (
+        <SimpleActionModal
           action={configAction}
           onClose={() => setConfigAction(null)}
         />

@@ -24,11 +24,11 @@ export interface ToggleEntry {
   bytes: string;  // even-length hex pairs, e.g. "3EAA"
 }
 
-export interface ActionEntry {
-  id: string;
-  type: 'toggle';
-  params: { entries: ToggleEntry[] };
-}
+export type ActionEntry =
+  | { id: string; type: 'toggle';  params: { entries: ToggleEntry[] } }
+  | { id: string; type: 'set_pc';  params: { addr: string } }
+  | { id: string; type: 'io_out';  params: { port: string; value: string } }
+  | { id: string; type: 'fill';    params: { start: string; end: string; value: string } };
 
 export interface ParsedConfig {
   name: string;
@@ -49,11 +49,19 @@ function parseMachineConfig(json: string): ParsedConfig {
     });
     const actions: ActionEntry[] = (m.actions ?? []).map((a) => {
       const e = a as Record<string, unknown>;
-      return {
-        id: (e.id ?? crypto.randomUUID()) as string,
-        type: (e.type ?? 'toggle') as 'toggle',
-        params: (e.params ?? { entries: [] }) as ActionEntry['params'],
-      };
+      const id = (e.id ?? crypto.randomUUID()) as string;
+      const type = (e.type ?? 'toggle') as ActionEntry['type'];
+      const params = (e.params ?? {}) as Record<string, unknown>;
+      switch (type) {
+        case 'set_pc':
+          return { id, type, params: { addr: (params.addr ?? '0000') as string } };
+        case 'io_out':
+          return { id, type, params: { port: (params.port ?? '00') as string, value: (params.value ?? '00') as string } };
+        case 'fill':
+          return { id, type, params: { start: (params.start ?? '0000') as string, end: (params.end ?? 'FFFF') as string, value: (params.value ?? '00') as string } };
+        default:
+          return { id, type: 'toggle' as const, params: { entries: (params.entries ?? []) as ToggleEntry[] } };
+      }
     });
     return { name: m.name ?? 'S-100 System', slots, actions };
   } catch {
@@ -108,6 +116,49 @@ export function applyToggleEntries(entries: ToggleEntry[]): string | null {
     }
   }
   return null;
+}
+
+const HEX2 = /^[0-9A-Fa-f]{2}$/;
+const HEX4_RE = /^[0-9A-Fa-f]{4}$/;
+
+/** Apply a set_pc action. Returns an error string or null. */
+export function applySetPc(params: { addr: string }): string | null {
+  if (!HEX4_RE.test(params.addr)) return `Bad PC address: "${params.addr}" — must be 4 hex digits`;
+  wasm.setPC(parseInt(params.addr, 16));
+  return null;
+}
+
+/** Apply an io_out action. Returns an error string or null. */
+export function applyIoOut(params: { port: string; value: string }): string | null {
+  if (!HEX2.test(params.port)) return `Bad port: "${params.port}" — must be 2 hex digits`;
+  if (!HEX2.test(params.value)) return `Bad value: "${params.value}" — must be 2 hex digits`;
+  wasm.ioWrite(parseInt(params.port, 16), parseInt(params.value, 16));
+  return null;
+}
+
+/** Apply a fill action. Returns an error string or null. */
+export function applyFill(params: { start: string; end: string; value: string }): string | null {
+  if (!HEX4_RE.test(params.start)) return `Bad start address: "${params.start}" — must be 4 hex digits`;
+  if (!HEX4_RE.test(params.end))   return `Bad end address: "${params.end}" — must be 4 hex digits`;
+  if (!HEX2.test(params.value))    return `Bad fill value: "${params.value}" — must be 2 hex digits`;
+  const start = parseInt(params.start, 16);
+  const end   = parseInt(params.end, 16);
+  const val   = parseInt(params.value, 16);
+  if (end < start) return `End address (${params.end}) must be >= start address (${params.start})`;
+  for (let a = start; a <= end; a++) {
+    wasm.writeMemory(a, val);
+  }
+  return null;
+}
+
+/** Apply any action. Returns an error string or null. */
+export function applyAction(action: ActionEntry): string | null {
+  switch (action.type) {
+    case 'toggle': return applyToggleEntries(action.params.entries);
+    case 'set_pc': return applySetPc(action.params);
+    case 'io_out': return applyIoOut(action.params);
+    case 'fill':   return applyFill(action.params);
+  }
 }
 
 // ── Demo machine ───────────────────────────────────────────────────────────────
@@ -632,11 +683,11 @@ export interface MachineStore {
   /** Internal: reload machine JSON while preserving disks + CP/M boot state. */
   _reloadWithStatePreservation: (newJson: string, newSlots: SlotEntry[]) => void;
 
-  // Action (Toggle) management
-  addAction: () => void;
+  // Action management
+  addAction: (type?: ActionEntry['type']) => void;
   removeAction: (id: string) => void;
-  updateAction: (id: string, params: ActionEntry['params']) => void;
-  /** Immediately write all toggle entries into RAM (without starting the CPU). */
+  updateAction: (id: string, update: Partial<ActionEntry>) => void;
+  /** Immediately apply all actions (without starting the CPU). */
   applyActionsNow: () => void;
 }
 
@@ -702,7 +753,8 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
       // Apply toggle action: writes JMP 0xFF00 at 0x0000 (front panel boot vector)
       const { actions } = parseMachineConfig(ALTAIR_CPM_MACHINE);
       for (const action of actions) {
-        if (action.type === 'toggle') applyToggleEntries(action.params.entries);
+        const err = applyAction(action);
+        if (err) { set({ error: `Action error: ${err}` }); return; }
       }
 
       set({
@@ -811,13 +863,11 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
 
   start: () => {
     const state = get();
-    // Apply toggle actions before running (fail-closed)
+    // Apply actions before running (fail-closed)
     if (!state.actionsApplied && state.actions.length > 0) {
       for (const action of state.actions) {
-        if (action.type === 'toggle') {
-          const err = applyToggleEntries(action.params.entries);
-          if (err) { set({ error: `Toggle action error: ${err}` }); return; }
-        }
+        const err = applyAction(action);
+        if (err) { set({ error: `Action error: ${err}` }); return; }
       }
       set({ actionsApplied: true });
     }
@@ -832,9 +882,9 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     if (mode === 'cpm') {
       wasm.loadBinary(activeBootRomAddr ?? 0xFF00, activeBootRom ?? ALTAIR_BOOT_ROM);
     }
-    // Re-apply toggle actions for any mode — boot vectors live in RAM and get wiped on reset.
+    // Re-apply actions for any mode — boot vectors live in RAM and get wiped on reset.
     for (const action of actions) {
-      if (action.type === 'toggle') applyToggleEntries(action.params.entries);
+      applyAction(action);
     }
     // Auto-resume so the reboot runs without manual intervention.
     set({ terminalOutput: '', traceEntries: [], traceCursor: 0, running: true });
@@ -966,14 +1016,12 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   },
 
   tick: (cycles = 32768) => {
-    // Apply toggle actions before first step (for Step button path)
+    // Apply actions before first step (for Step button path)
     const state = get();
     if (!state.actionsApplied && state.actions.length > 0) {
       for (const action of state.actions) {
-        if (action.type === 'toggle') {
-          const err = applyToggleEntries(action.params.entries);
-          if (err) { set({ error: `Toggle action error: ${err}` }); return; }
-        }
+        const err = applyAction(action);
+        if (err) { set({ error: `Action error: ${err}` }); return; }
       }
       set({ actionsApplied: true });
     }
@@ -1045,9 +1093,9 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     if (previousMode === 'cpm') {
       wasm.loadBinary(state.activeBootRomAddr ?? 0xFF00, state.activeBootRom ?? ALTAIR_BOOT_ROM);
     }
-    // Re-apply toggle actions for any mode (boot vectors and copy loops live in RAM)
+    // Re-apply actions for any mode (boot vectors and copy loops live in RAM)
     for (const action of state.actions) {
-      if (action.type === 'toggle') applyToggleEntries(action.params.entries);
+      applyAction(action);
     }
 
     set({
@@ -1104,18 +1152,27 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     get()._reloadWithStatePreservation(json, newSlots);
   },
 
-  // ── Action (Toggle) management ───────────────────────────────────────────────
+  // ── Action management ────────────────────────────────────────────────────────
 
-  addAction: () => {
+  addAction: (type: ActionEntry['type'] = 'toggle') => {
     const state = get();
-    const newAction: ActionEntry = {
-      id: crypto.randomUUID(),
-      type: 'toggle',
-      params: { entries: [] },
-    };
+    let newAction: ActionEntry;
+    switch (type) {
+      case 'set_pc':
+        newAction = { id: crypto.randomUUID(), type: 'set_pc', params: { addr: '0000' } };
+        break;
+      case 'io_out':
+        newAction = { id: crypto.randomUUID(), type: 'io_out', params: { port: '00', value: '00' } };
+        break;
+      case 'fill':
+        newAction = { id: crypto.randomUUID(), type: 'fill', params: { start: '0000', end: 'FFFF', value: '00' } };
+        break;
+      default:
+        newAction = { id: crypto.randomUUID(), type: 'toggle', params: { entries: [] } };
+        break;
+    }
     const newActions = [...state.actions, newAction];
     const json = configToJson(state.machineName, state.slots, newActions);
-    // Reload machine to clear any previously toggled bytes
     try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
     set({ actions: newActions, machineJson: json, actionsApplied: false, running: false,
           terminalOutput: '', traceEntries: [], traceCursor: 0 });
@@ -1130,9 +1187,9 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
           terminalOutput: '', traceEntries: [], traceCursor: 0 });
   },
 
-  updateAction: (id, params) => {
+  updateAction: (id, update) => {
     const state = get();
-    const newActions = state.actions.map(a => a.id === id ? { ...a, params } : a);
+    const newActions = state.actions.map(a => a.id === id ? { ...a, ...update } as ActionEntry : a);
     const json = configToJson(state.machineName, state.slots, newActions);
     try { wasm.loadMachine(json); } catch (e) { set({ error: String(e) }); return; }
     set({ actions: newActions, machineJson: json, actionsApplied: false, running: false,
@@ -1142,10 +1199,8 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
   applyActionsNow: () => {
     const state = get();
     for (const action of state.actions) {
-      if (action.type === 'toggle') {
-        const err = applyToggleEntries(action.params.entries);
-        if (err) { set({ error: `Toggle action error: ${err}` }); return; }
-      }
+      const err = applyAction(action);
+      if (err) { set({ error: `Action error: ${err}` }); return; }
     }
     set({ actionsApplied: true, error: null });
   },

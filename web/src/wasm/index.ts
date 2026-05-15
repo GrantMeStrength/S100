@@ -137,6 +137,10 @@ export function setPC(pc: number): void {
   getEmulator().setPC(pc);
 }
 
+export function ioWrite(port: number, value: number): void {
+  getEmulator().ioWrite(port, value);
+}
+
 export function getDazzlerFrame(): Uint8Array {
   return getEmulator().getDazzlerFrame();
 }

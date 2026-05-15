@@ -121,6 +121,14 @@ export class Emulator {
         wasm.emulator_insertDisk(this.__wbg_ptr, drive, ptr0, len0);
     }
     /**
+     * Write a byte to an I/O port (broadcasts to all cards on the bus).
+     * @param {number} port
+     * @param {number} value
+     */
+    ioWrite(port, value) {
+        wasm.emulator_ioWrite(this.__wbg_ptr, port, value);
+    }
+    /**
      * Load a raw binary blob into memory starting at `base`.
      * @param {number} base
      * @param {Uint8Array} data

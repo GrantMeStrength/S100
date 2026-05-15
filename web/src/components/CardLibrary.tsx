@@ -64,12 +64,8 @@ export function CardLibrary() {
                 fontSize: 10,
                 lineHeight: 1.4,
                 marginLeft: 2,
-                overflow: 'hidden',
-                display: '-webkit-box',
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical' as const,
               }}>
-                {info.description}
+                {info.summary}
               </div>
             </S100CardShape>
           );

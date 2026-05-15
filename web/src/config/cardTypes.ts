@@ -113,6 +113,8 @@ export interface CardTypeInfo {
   color: string;       // background
   accent: string;      // border / highlight
   description: string;
+  /** One-line summary for the card library UI. */
+  summary: string;
   /** Structured port usage info shown in the settings panel. */
   ports?: PortInfo[];
   defaultParams: Record<string, unknown>;
@@ -141,6 +143,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     color: '#2a1040',
     accent: '#9b59b6',
     description: 'Intel 8080A processor running at a configurable clock rate. Supports all standard 8080 instructions, memory-mapped I/O, RST interrupts, and HOLD/HLDA bus arbitration.',
+    summary: '8080A CPU, configurable clock',
     unique: true,
     defaultParams: { speed_hz: 2_000_000 },
     configFields: [
@@ -154,6 +157,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     color: '#1a0a30',
     accent: '#7d5af5',
     description: 'Zilog Z80 processor — fully compatible with the 8080 instruction set, plus extended instructions (IX/IY registers, CB/DD/ED/FD prefixes), two interrupt modes, and block operations.',
+    summary: 'Z80 CPU, 8080-compatible + extensions',
     unique: true,
     defaultParams: { speed_hz: 2_000_000 },
     configFields: [
@@ -167,6 +171,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     color: '#0d2e1a',
     accent: '#27ae60',
     description: 'Static read/write memory occupying a configurable address range. On an S-100 bus the RAM card responds to MEMR and MEMW control signals. Multiple RAM cards can coexist at different base addresses.',
+    summary: 'Configurable static RAM',
     defaultParams: { base: 0x0000, size: 65536 },
     configFields: [
       { key: 'base', label: 'Base address', type: 'hex', min: 0, max: 0xFFFF, default: 0x0000 },
@@ -180,6 +185,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     color: '#0d1e35',
     accent: '#2980b9',
     description: 'Read-only memory card. Choose a built-in ROM image from the library, or upload a custom binary. Address range is set by jumpers (base address and size). Writes are silently ignored. Optional: set a phantom port to page the ROM out of the address space on any write to that I/O port (Shadow ROM / boot-ROM behaviour).',
+    summary: 'ROM with built-in or custom images',
     defaultParams: { base: 0xF800, size: 2048, rom_image: 'memon80' },
     configFields: [
       { key: 'rom_image', label: 'ROM chip (jumper select)', type: 'romimage', default: 'memon80' },
@@ -197,6 +203,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     color: '#2e1a0d',
     accent: '#e67e22',
     description: 'Generic UART serial I/O card providing the system console. Port addresses are configurable to match the target hardware (JAIR: 0x00/0x01, Cromemco SIO-2: 0x10/0x11). Status bits and polarity are also adjustable.',
+    summary: 'UART console, configurable ports',
     ports: [
       { range: 'status_port (default 0x01)', direction: 'IN',     description: 'Status register — bit indicates RX data available / TX ready.' },
       { range: 'data_port   (default 0x00)', direction: 'IN/OUT', description: 'Data register — read received byte / write byte to transmit.' },
@@ -214,6 +221,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     color: '#2e250d',
     accent: '#f39c12',
     description: 'Generic software-emulated floppy disk controller for CP/M systems. Implements a WD1771-style register interface. The CP/M BIOS communicates through standard register reads and writes.',
+    summary: 'Generic CP/M floppy controller',
     ports: [
       { range: '0xE0', direction: 'OUT',    description: 'Command register — send WD1771 command.' },
       { range: '0xE1', direction: 'IN/OUT', description: 'Track register.' },
@@ -230,6 +238,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     color: '#2e1a0a',
     accent: '#d4802a',
     description: 'Authentic MITS 88-DCDD hard-sector floppy disk controller as used in the original Altair 8800. Supports 77 tracks × 32 sectors × 137 bytes per sector (IBM 3740 hard-sector format, ~330 KB per disk). Compatible with the SIMH Altair CP/M 2.2 disk image.',
+    summary: 'Altair hard-sector floppy, ports 08-0A',
     ports: [
       { range: '0x08', direction: 'IN',     description: 'Drive status (active-low). Bit 7: data ready / bit 6: track 0 / bit 2: head loaded / bit 1: movement OK / bit 0: write ready.' },
       { range: '0x08', direction: 'OUT',    description: 'Drive select. Bit 7 = deselect all; bits 3–0 = drive number (0–3).' },
@@ -247,6 +256,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     color: '#0d2030',
     accent: '#3a9fd4',
     description: 'Authentic MITS 88-2SIO dual serial I/O card as used in the original Altair 8800. Based on the Motorola MC6850 ACIA. Provides the system console for Altair CP/M. Channel A is emulated on ports 0x10/0x11.',
+    summary: 'Altair dual serial, MC6850 ACIA',
     ports: [
       { range: '0x10', direction: 'IN',     description: 'Status register. Bit 0: RDRF — receive data register full (1 = character waiting). Bit 1: TDRE — transmit data register empty (always 1).' },
       { range: '0x10', direction: 'OUT',    description: 'Control register — master reset and baud rate divisor (accepted but ignored in emulation).' },
@@ -263,6 +273,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     color: '#1a250d',
     accent: '#5a9e2f',
     description: 'Western Digital WD1793 floppy disk controller — the standard FDC chip used in IMSAI 8080, Cromemco, Processor Technology, and most non-MITS S-100 systems. Uses authentic WD1793 register protocol. Supports configurable disk geometry and port addresses. Works with standard flat binary disk images (no preamble).',
+    summary: 'WD1793 floppy, configurable geometry',
     ports: [
       { range: 'base+0 (default 0x34)', direction: 'IN',     description: 'Status register. Bit 7: Not Ready / Bit 5: Record Not Found / Bit 2: Track 0 / Bit 1: DRQ / Bit 0: Busy.' },
       { range: 'base+0 (default 0x34)', direction: 'OUT',    description: 'Command register. Type I: Restore(0x00), Seek(0x10), Step(0x20), StepIn(0x40), StepOut(0x60). Type II: ReadSector(0x80), WriteSector(0xA0). Type IV: ForceInterrupt(0xD0).' },
@@ -287,6 +298,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     color: '#1a0d2e',
     accent: '#a855f7',
     description: 'Cromemco Dazzler color graphics card for the S-100 bus. Generates a composite video signal from a software-defined frame buffer in system RAM. Supports four display modes: 32×32 / 64×64 color (IRGB) or 64×64 / 128×128 monochrome.',
+    summary: 'Color/mono graphics, 4 display modes',
     ports: [
       { range: '0x0E', direction: 'OUT', description: 'NX register — bit 7: display enable; bits 6–0: frame buffer page (start address = page × 512).' },
       { range: '0x0F', direction: 'OUT', description: 'CC register — bit 1: X4 (high-res); bit 0: color (1 = IRGB color, 0 = B&W).' },
@@ -302,6 +314,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     color: '#0a1a10',
     accent: '#33cc66',
     description: 'Processor Technology VDM-1 memory-mapped video display card. Outputs 16 rows × 64 columns of ASCII text via composite video. VRAM is mapped into the system address space at a 1K-aligned base (default 0xCC00). I/O port 0xFE controls hardware scrolling (start row) and shadow blanking. Bit 7 of each VRAM byte enables inverse video.',
+    summary: 'Text display, 16×64 characters',
     ports: [
       { range: '0xFE', direction: 'OUT' as const, description: 'DSTAT — display start row (bits 3-0) and shadow depth (bits 7-4) for hardware scrolling.' },
     ],
@@ -317,6 +330,7 @@ export const CARD_TYPES: CardTypeInfo[] = [
     color: '#1a1200',
     accent: '#f5c542',
     description: 'Emulates the Processor Technology SOL-20 motherboard I/O: keyboard input (ports 0xFA/0xFC, active-low status), RS-232 serial (ports 0xF8/0xF9), and VDM DSTAT (port 0xFE). Required for the SOL-20 preset — not a standalone S-100 card.',
+    summary: 'SOL-20 keyboard and serial I/O',
     ports: [
       { range: '0xFA', direction: 'IN',  description: 'STAPT — keyboard/tape status. Bit 0 = keyboard data ready (active-LOW).' },
       { range: '0xFC', direction: 'IN',  description: 'KDATA — keyboard ASCII data.' },

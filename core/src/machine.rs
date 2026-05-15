@@ -606,6 +606,11 @@ impl Machine {
         }
     }
 
+    /// Write a byte to an I/O port (broadcasts to all cards on the bus).
+    pub fn io_write_port(&mut self, port: u8, value: u8) {
+        self.bus.io_write(port, value);
+    }
+
     // ── Serial I/O ─────────────────────────────────────────────────────────
 
     pub fn get_serial_output(&mut self) -> Vec<u8> {

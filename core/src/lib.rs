@@ -116,6 +116,12 @@ impl Emulator {
         self.machine.get_disk_data(drive).unwrap_or_default()
     }
 
+    /// Write a byte to an I/O port (broadcasts to all cards on the bus).
+    #[wasm_bindgen(js_name = ioWrite)]
+    pub fn io_write(&mut self, port: u8, value: u8) {
+        self.machine.io_write_port(port, value);
+    }
+
     /// Set the CPU program counter directly (used for ROM-based boot sequences).
     #[wasm_bindgen(js_name = setPC)]
     pub fn set_pc(&mut self, pc: u16) {

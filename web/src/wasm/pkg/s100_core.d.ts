@@ -46,6 +46,10 @@ export class Emulator {
      */
     insertDisk(drive: number, data: Uint8Array): void;
     /**
+     * Write a byte to an I/O port (broadcasts to all cards on the bus).
+     */
+    ioWrite(port: number, value: number): void;
+    /**
      * Load a raw binary blob into memory starting at `base`.
      */
     loadBinary(base: number, data: Uint8Array): void;
@@ -106,6 +110,7 @@ export interface InitOutput {
     readonly emulator_getTrace: (a: number, b: bigint, c: number) => [number, number];
     readonly emulator_getVdmFrame: (a: number) => [number, number];
     readonly emulator_insertDisk: (a: number, b: number, c: number, d: number) => void;
+    readonly emulator_ioWrite: (a: number, b: number, c: number) => void;
     readonly emulator_loadBinary: (a: number, b: number, c: number, d: number) => void;
     readonly emulator_loadMachine: (a: number, b: number, c: number) => [number, number];
     readonly emulator_new: () => number;
