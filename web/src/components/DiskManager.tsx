@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useMachineStore } from '../store/machineStore';
+import { DiskFileBrowser } from './DiskFileBrowser';
 
 const DRIVE_LABELS = ['A', 'B', 'C', 'D'];
 
@@ -87,6 +88,7 @@ export function DiskManager() {
 
   const [activeWarning, setActiveWarning] = useState<number | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [fileBrowserDrive, setFileBrowserDrive] = useState<number | null>(null);
 
   // Find which compat entry matches the current machine's card set
   const cardIds = cardIdKey.split(',');
@@ -193,6 +195,9 @@ export function DiskManager() {
                 />
                 {diskStatus[i] ? (
                   <>
+                    <DriveBtn onClick={() => setFileBrowserDrive(i)} color="#58a6ff" disabled={!wasmReady} title="Browse CP/M files">
+                      📁
+                    </DriveBtn>
                     <DriveBtn onClick={() => exportDisk(i)} color="#79c0ff" disabled={!wasmReady} title="Save disk image">
                       ↓
                     </DriveBtn>
@@ -286,6 +291,14 @@ export function DiskManager() {
             ⚠ {GENERAL_NOTE}
           </div>
         </div>
+      )}
+
+      {/* CP/M File Browser modal */}
+      {fileBrowserDrive !== null && (
+        <DiskFileBrowser
+          drive={fileBrowserDrive}
+          onClose={() => setFileBrowserDrive(null)}
+        />
       )}
     </div>
   );
