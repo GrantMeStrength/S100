@@ -36,15 +36,15 @@ export const GEOM_8INCH: DiskGeometry = {
   totalBlocks: 243,
 };
 
-// DCDD: 77 tracks × 32 sectors × 137 bytes (9-byte header + 128 payload)
+// DCDD: 77 tracks × 32 sectors × 137 bytes (3-byte preamble + 128 payload + 6 trailer)
 export const GEOM_DCDD: DiskGeometry = {
   tracks: 77,
   sectorsPerTrack: 32,
   sectorSize: 128,          // logical payload
-  reservedTracks: 6,        // Altair CP/M uses 6 reserved tracks
+  reservedTracks: 2,        // Altair CP/M 2.2 uses 2 reserved tracks
   blockSize: 1024,
   dirEntries: 64,
-  totalBlocks: 254,
+  totalBlocks: 300,         // (77-2)*32*128/1024 = 300
 };
 
 // ── CP/M Directory Entry ──────────────────────────────────────────────────────
@@ -73,47 +73,32 @@ export interface CpmFile {
   extents: CpmDirEntry[];    // all directory entries for this file
 }
 
-// ── Sector translation for 8-inch (CP/M 2.2 standard skew table) ─────────────
-
-const SKEW_TABLE_26: number[] = [
-  1, 7, 13, 19, 25, 5, 11, 17, 23, 3, 9, 15, 21, 2, 8, 14, 20, 26, 6, 12, 18, 24, 4, 10, 16, 22
-];
-
 /**
- * Convert a logical sector number (0-based) to a physical sector (1-based)
- * using the CP/M 2.2 standard 6-sector skew for 8-inch disks.
+ * Convert a logical sector number (0-based) to a physical sector (1-based).
+ * Disk images store data in logical sector order, so this is a simple 1:1 mapping.
  */
-function logicalToPhysical(logicalSector: number, geom: DiskGeometry): number {
-  if (geom.sectorsPerTrack === 26) {
-    return SKEW_TABLE_26[logicalSector % 26];
-  }
-  // DCDD and other formats: assume 1:1 mapping
+function logicalToPhysical(logicalSector: number, _geom: DiskGeometry): number {
   return logicalSector + 1;
 }
 
 // ── Low-level disk access ─────────────────────────────────────────────────────
 
-const DCDD_SECTOR_RAW = 137;  // 9-byte header + 128 payload
-const DCDD_HEADER = 9;
+const DCDD_SECTOR_RAW = 137;  // 3-byte preamble + 128 payload + 6 trailer
+const DCDD_HEADER = 3;
 
 function isDcdd(data: Uint8Array): boolean {
-  // 337,568 or 337,664 (with 96-byte SIMH preamble)
+  // 337,568 or 337,664 (with 96-byte trailing padding from SIMH)
   return data.length === 77 * 32 * 137 || data.length === 77 * 32 * 137 + 96;
-}
-
-function dcddPreamble(data: Uint8Array): number {
-  return data.length === 77 * 32 * 137 + 96 ? 96 : 0;
 }
 
 /**
  * Read a 128-byte sector from the disk image.
  * For flat images: offset = (track * SPT + (physSector - 1)) * 128
- * For DCDD images: offset = preamble + (track * 32 + (physSector - 1)) * 137 + 9
+ * For DCDD images: offset = (track * 32 + (physSector - 1)) * 137 + 3  (skip 3-byte preamble)
  */
 function readSector(data: Uint8Array, track: number, physSector: number, geom: DiskGeometry): Uint8Array | null {
   if (isDcdd(data)) {
-    const pre = dcddPreamble(data);
-    const off = pre + (track * geom.sectorsPerTrack + (physSector - 1)) * DCDD_SECTOR_RAW + DCDD_HEADER;
+    const off = (track * geom.sectorsPerTrack + (physSector - 1)) * DCDD_SECTOR_RAW + DCDD_HEADER;
     if (off + 128 > data.length) return null;
     return data.slice(off, off + 128);
   }
@@ -128,8 +113,7 @@ function readSector(data: Uint8Array, track: number, physSector: number, geom: D
 function writeSector(data: Uint8Array, track: number, physSector: number, geom: DiskGeometry, payload: Uint8Array): boolean {
   if (payload.length !== 128) return false;
   if (isDcdd(data)) {
-    const pre = dcddPreamble(data);
-    const off = pre + (track * geom.sectorsPerTrack + (physSector - 1)) * DCDD_SECTOR_RAW + DCDD_HEADER;
+    const off = (track * geom.sectorsPerTrack + (physSector - 1)) * DCDD_SECTOR_RAW + DCDD_HEADER;
     if (off + 128 > data.length) return false;
     data.set(payload, off);
     return true;
