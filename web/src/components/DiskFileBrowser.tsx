@@ -7,6 +7,8 @@ import { useMachineStore } from '../store/machineStore';
 import { listFiles, extractFile, writeFile, deleteFile, getDiskStats, CpmFile } from '../utils/cpmFiles';
 import * as wasm from '../wasm';
 
+type DiskModState = 'idle' | 'modified';
+
 interface Props {
   drive: number;
   onClose: () => void;
@@ -16,7 +18,9 @@ export function DiskFileBrowser({ drive, onClose }: Props) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [modState, setModState] = useState<DiskModState>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const warmReset = useMachineStore(s => s.warmReset);
 
   // Get current disk data
   const diskData = useMemo(() => {
@@ -43,6 +47,12 @@ export function DiskFileBrowser({ drive, onClose }: Props) {
     setError(null);
   }, []);
 
+  const handleReboot = useCallback(() => {
+    warmReset();
+    setModState('idle');
+    onClose();
+  }, [warmReset, onClose]);
+
   const handleDownload = useCallback((file: CpmFile) => {
     if (!diskData) return;
     const content = extractFile(diskData, file);
@@ -59,8 +69,6 @@ export function DiskFileBrowser({ drive, onClose }: Props) {
     URL.revokeObjectURL(url);
   }, [diskData]);
 
-  const [activeWarning, setActiveWarning] = useState<string | null>(null);
-
   const handleDelete = useCallback((file: CpmFile) => {
     // Read FRESH disk data (CP/M may have written since modal opened)
     let fresh: Uint8Array;
@@ -68,7 +76,7 @@ export function DiskFileBrowser({ drive, onClose }: Props) {
     if (!fresh || fresh.length === 0) return;
     const newData = deleteFile(fresh, file);
     wasm.insertDisk(drive, newData);
-    setActiveWarning('Press Ctrl-C in the terminal for CP/M to see the change.');
+    setModState('modified');
     refresh();
   }, [drive, refresh]);
 
@@ -86,7 +94,7 @@ export function DiskFileBrowser({ drive, onClose }: Props) {
       return;
     }
     wasm.insertDisk(drive, result.data);
-    setActiveWarning('Press Ctrl-C in the terminal for CP/M to see the change.');
+    setModState('modified');
     refresh();
   }, [drive, refresh]);
 
@@ -163,10 +171,21 @@ export function DiskFileBrowser({ drive, onClose }: Props) {
           </div>
         )}
 
-        {/* Warm-boot hint */}
-        {activeWarning && !error && (
-          <div style={{ padding: '6px 10px', background: '#0d1a0d', border: '1px solid #2ea043', borderRadius: 3, color: '#3fb950', fontSize: 10, margin: '0 12px' }}>
-            ✓ Disk updated — {activeWarning}
+        {/* Disk modified — reboot prompt */}
+        {modState === 'modified' && !error && (
+          <div style={{ padding: '6px 10px', background: '#0d1a0d', border: '1px solid #2ea043', borderRadius: 3, color: '#3fb950', fontSize: 10, margin: '0 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>✓ Disk updated</span>
+            <button
+              onClick={handleReboot}
+              style={{
+                background: '#238636', border: '1px solid #2ea043', borderRadius: 3,
+                color: '#e6edf3', cursor: 'pointer', fontSize: 10, padding: '2px 8px',
+                fontFamily: 'monospace',
+              }}
+            >
+              Reboot CP/M
+            </button>
+            <span style={{ color: '#6e7681' }}>to refresh DIR (use at CP/M prompt)</span>
           </div>
         )}
 
