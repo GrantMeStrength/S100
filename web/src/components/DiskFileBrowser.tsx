@@ -59,28 +59,36 @@ export function DiskFileBrowser({ drive, onClose }: Props) {
     URL.revokeObjectURL(url);
   }, [diskData]);
 
+  const [activeWarning, setActiveWarning] = useState<string | null>(null);
+
   const handleDelete = useCallback((file: CpmFile) => {
-    if (!diskData) return;
-    const newData = deleteFile(diskData, file);
-    // Write back to emulator
+    // Read FRESH disk data (CP/M may have written since modal opened)
+    let fresh: Uint8Array;
+    try { fresh = wasm.getDiskData(drive); } catch { return; }
+    if (!fresh || fresh.length === 0) return;
+    const newData = deleteFile(fresh, file);
     wasm.insertDisk(drive, newData);
+    setActiveWarning('Press Ctrl-C in the terminal for CP/M to see the change.');
     refresh();
-  }, [diskData, drive, refresh]);
+  }, [drive, refresh]);
 
   const uploadFile = useCallback(async (file: File) => {
-    if (!diskData) return;
     setError(null);
+    // Read FRESH disk data (CP/M may have written since modal opened)
+    let fresh: Uint8Array;
+    try { fresh = wasm.getDiskData(drive); } catch { setError('Cannot read disk'); return; }
+    if (!fresh || fresh.length === 0) { setError('No disk mounted'); return; }
     const buffer = await file.arrayBuffer();
     const fileBytes = new Uint8Array(buffer);
-    const result = writeFile(diskData, file.name, fileBytes);
+    const result = writeFile(fresh, file.name, fileBytes);
     if (result.error) {
       setError(result.error);
       return;
     }
-    // Write modified disk back to emulator
     wasm.insertDisk(drive, result.data);
+    setActiveWarning('Press Ctrl-C in the terminal for CP/M to see the change.');
     refresh();
-  }, [diskData, drive, refresh]);
+  }, [drive, refresh]);
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -152,6 +160,13 @@ export function DiskFileBrowser({ drive, onClose }: Props) {
         {error && (
           <div style={{ padding: '6px 10px', background: '#1a0505', border: '1px solid #4a1515', borderRadius: 3, color: '#f85149', fontSize: 10, margin: '0 12px' }}>
             {error}
+          </div>
+        )}
+
+        {/* Warm-boot hint */}
+        {activeWarning && !error && (
+          <div style={{ padding: '6px 10px', background: '#0d1a0d', border: '1px solid #2ea043', borderRadius: 3, color: '#3fb950', fontSize: 10, margin: '0 12px' }}>
+            ✓ Disk updated — {activeWarning}
           </div>
         )}
 
