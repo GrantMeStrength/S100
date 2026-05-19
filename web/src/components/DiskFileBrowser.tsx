@@ -88,12 +88,23 @@ export function DiskFileBrowser({ drive, onClose }: Props) {
     if (!fresh || fresh.length === 0) { setError('No disk mounted'); return; }
     const buffer = await file.arrayBuffer();
     const fileBytes = new Uint8Array(buffer);
+    console.log('[FileBrowser] Upload:', file.name, 'size:', fileBytes.length, 'disk:', fresh.length);
     const result = writeFile(fresh, file.name, fileBytes);
     if (result.error) {
+      console.error('[FileBrowser] writeFile error:', result.error);
       setError(result.error);
       return;
     }
+    // Verify: list files on the modified image before inserting
+    const beforeFiles = listFiles(result.data);
+    console.log('[FileBrowser] Files on modified image:', beforeFiles.map(f => f.name));
     wasm.insertDisk(drive, result.data);
+    // Verify: read back from emulator to confirm insertDisk worked
+    const verify = wasm.getDiskData(drive);
+    const afterFiles = listFiles(verify);
+    console.log('[FileBrowser] Files after insertDisk:', afterFiles.map(f => f.name));
+    console.log('[FileBrowser] Data match:', result.data.length === verify.length &&
+      result.data.every((b, i) => b === verify[i]));
     setModState('modified');
     refresh();
   }, [drive, refresh]);
