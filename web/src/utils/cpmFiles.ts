@@ -113,13 +113,20 @@ function readSector(data: Uint8Array, track: number, physSector: number, geom: D
 
 /**
  * Write a 128-byte sector into the disk image (mutates `data` in place).
+ * For DCDD images, also updates the checksum byte (sum of payload mod 256)
+ * stored at offset +132 within the 137-byte raw sector.
  */
 function writeSector(data: Uint8Array, track: number, physSector: number, geom: DiskGeometry, payload: Uint8Array): boolean {
   if (payload.length !== 128) return false;
   if (isDcdd(data)) {
-    const off = (track * geom.sectorsPerTrack + (physSector - 1)) * DCDD_SECTOR_RAW + DCDD_HEADER;
+    const sectorBase = (track * geom.sectorsPerTrack + (physSector - 1)) * DCDD_SECTOR_RAW;
+    const off = sectorBase + DCDD_HEADER;
     if (off + 128 > data.length) return false;
     data.set(payload, off);
+    // Update checksum at byte 132 of the raw sector (sum of 128 payload bytes mod 256)
+    let cksum = 0;
+    for (let i = 0; i < 128; i++) cksum = (cksum + payload[i]) & 0xFF;
+    if (sectorBase + 132 < data.length) data[sectorBase + 132] = cksum;
     return true;
   }
   const off = (track * geom.sectorsPerTrack + (physSector - 1)) * geom.sectorSize;
