@@ -46,7 +46,7 @@ export const GEOM_DCDD: DiskGeometry = {
   sectorSize: 128,          // logical payload
   reservedTracks: 2,        // Altair CP/M 2.2 uses 2 reserved tracks
   blockSize: 2048,          // BSH=4 → BLS=2048
-  dirEntries: 128,          // 2 dir blocks × 2048 / 32 = 128 slots
+  dirEntries: 64,           // DRM=63 → 64 entries (1 dir block used)
   totalBlocks: 150,         // DSM+1 = 150
 };
 
@@ -77,12 +77,18 @@ export interface CpmFile {
 }
 
 /**
- * Convert a logical sector number (0-based) to a physical sector (1-based).
- * The DCDD disk image stores sectors in physical order; the BIOS SECTRAN
- * is handled by CP/M at runtime, so our image access uses identity mapping.
+ * Altair CP/M 2.2 BIOS SECTRAN table (extracted from live BIOS at E7BE).
+ * Maps logical sector (0-based index) → physical sector (1-based value).
+ * The DCDD BIOS uses 1-based sector numbers; readSector/writeSector
+ * subtract 1 to get the 0-based hardware offset.
  */
+const DCDD_SECTRAN = [
+  1,  9, 17, 25,  3, 11, 19, 27,  5, 13, 21, 29,  7, 15, 23, 31,
+  2, 10, 18, 26,  4, 12, 20, 28,  6, 14, 22, 30,  8, 16, 24, 32,
+];
+
 function logicalToPhysical(logicalSector: number, _geom: DiskGeometry): number {
-  return logicalSector + 1;
+  return DCDD_SECTRAN[logicalSector];
 }
 
 // ── Low-level disk access ─────────────────────────────────────────────────────
