@@ -704,6 +704,43 @@ impl Machine {
         None
     }
 
+    pub fn enable_disk_trace(&mut self) {
+        if let Some(idx) = self.fdc_idx {
+            if let Some(card) = self.bus.cards.get_mut(idx) {
+                if let Some(dcdd) = card.as_any_mut().downcast_mut::<Dcdd88Card>() {
+                    dcdd.enable_trace();
+                }
+            }
+        }
+    }
+
+    pub fn disable_disk_trace(&mut self) {
+        if let Some(idx) = self.fdc_idx {
+            if let Some(card) = self.bus.cards.get_mut(idx) {
+                if let Some(dcdd) = card.as_any_mut().downcast_mut::<Dcdd88Card>() {
+                    dcdd.disable_trace();
+                }
+            }
+        }
+    }
+
+    pub fn get_disk_trace(&self) -> Vec<u8> {
+        if let Some(idx) = self.fdc_idx {
+            if let Some(card) = self.bus.cards.get(idx) {
+                if let Some(dcdd) = card.as_any().downcast_ref::<Dcdd88Card>() {
+                    let trace = dcdd.get_trace();
+                    let mut result = Vec::with_capacity(trace.len() * 2);
+                    for &(track, sector) in trace {
+                        result.push(track as u8);
+                        result.push(sector);
+                    }
+                    return result;
+                }
+            }
+        }
+        vec![]
+    }
+
     /// Render the Dazzler frame buffer to RGBA pixels.
     /// Returns [width_lo, width_hi, height_lo, height_hi, ...rgba_bytes], or empty if
     /// no Dazzler card is present or the display is disabled.

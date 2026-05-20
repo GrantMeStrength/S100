@@ -44,6 +44,9 @@ pub struct Dcdd88Card {
     /// Byte position within the current 137-byte sector (0..136, wraps at 137)
     byte_pos:       usize,
     write_mode:     bool,
+    /// Debug trace: records (track, sector) for recent sector reads
+    pub sector_trace: Vec<(usize, u8)>,
+    trace_enabled: bool,
 }
 
 impl Dcdd88Card {
@@ -59,7 +62,22 @@ impl Dcdd88Card {
             read_sector:    0,
             byte_pos:       0,
             write_mode:     false,
+            sector_trace:   Vec::new(),
+            trace_enabled:  false,
         }
+    }
+
+    pub fn enable_trace(&mut self) {
+        self.trace_enabled = true;
+        self.sector_trace.clear();
+    }
+
+    pub fn disable_trace(&mut self) {
+        self.trace_enabled = false;
+    }
+
+    pub fn get_trace(&self) -> &[(usize, u8)] {
+        &self.sector_trace
     }
 
     pub fn insert_disk(&mut self, drive: usize, data: Vec<u8>) {
@@ -151,6 +169,12 @@ impl S100Card for Dcdd88Card {
                 let Some(base) = self.sector_byte_offset() else { return Some(0xFF) };
                 let Some(drive) = self.current_drive else { return Some(0xFF) };
                 let disk = self.drives[drive].as_ref()?;
+
+                // Trace sector reads at byte_pos == 0 (start of a new sector read)
+                if self.trace_enabled && self.byte_pos == 0 {
+                    let track = self.current_track[drive];
+                    self.sector_trace.push((track, self.read_sector));
+                }
 
                 let pos = base + self.byte_pos;
                 let byte = if pos < disk.len() { disk[pos] } else { 0xFF };

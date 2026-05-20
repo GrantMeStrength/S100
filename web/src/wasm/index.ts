@@ -105,6 +105,18 @@ export function readMemory(addr: number): number {
   return getEmulator().readMemory(addr);
 }
 
+export function enableDiskTrace(): void {
+  getEmulator().enableDiskTrace();
+}
+
+export function disableDiskTrace(): void {
+  getEmulator().disableDiskTrace();
+}
+
+export function getDiskTrace(): Uint8Array {
+  return getEmulator().getDiskTrace();
+}
+
 export function writeMemory(addr: number, value: number): void {
   getEmulator().writeMemory(addr, value);
 }

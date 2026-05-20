@@ -143,6 +143,24 @@ impl Emulator {
         self.machine.get_vdm_frame()
     }
 
+    /// Enable DCDD sector trace recording.
+    #[wasm_bindgen(js_name = enableDiskTrace)]
+    pub fn enable_disk_trace(&mut self) {
+        self.machine.enable_disk_trace();
+    }
+
+    /// Disable DCDD sector trace recording.
+    #[wasm_bindgen(js_name = disableDiskTrace)]
+    pub fn disable_disk_trace(&mut self) {
+        self.machine.disable_disk_trace();
+    }
+
+    /// Get recorded sector trace as flat array: [track0, sector0, track1, sector1, ...]
+    #[wasm_bindgen(js_name = getDiskTrace)]
+    pub fn get_disk_trace(&self) -> Vec<u8> {
+        self.machine.get_disk_trace()
+    }
+
     /// Add a breakpoint at the given address.
     #[wasm_bindgen(js_name = addBreakpoint)]
     pub fn add_breakpoint(&mut self, addr: u16) {

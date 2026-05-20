@@ -13,6 +13,14 @@ export class Emulator {
      */
     clearBreakpoints(): void;
     /**
+     * Disable DCDD sector trace recording.
+     */
+    disableDiskTrace(): void;
+    /**
+     * Enable DCDD sector trace recording.
+     */
+    enableDiskTrace(): void;
+    /**
      * Render the Dazzler frame buffer to RGBA pixels.
      * Returns [width_lo, width_hi, height_lo, height_hi, ...rgba_bytes],
      * or an empty array if no Dazzler card is present or the display is disabled.
@@ -23,6 +31,10 @@ export class Emulator {
      * Returns an empty array if drive is not inserted.
      */
     getDiskData(drive: number): Uint8Array;
+    /**
+     * Get recorded sector trace as flat array: [track0, sector0, track1, sector1, ...]
+     */
+    getDiskTrace(): Uint8Array;
     /**
      * Drain all bytes the CPU has sent to the serial TX buffer.
      * Returns a UTF-8 string (non-UTF8 bytes become replacement chars).
@@ -103,8 +115,11 @@ export interface InitOutput {
     readonly __wbg_emulator_free: (a: number, b: number) => void;
     readonly emulator_addBreakpoint: (a: number, b: number) => void;
     readonly emulator_clearBreakpoints: (a: number) => void;
+    readonly emulator_disableDiskTrace: (a: number) => void;
+    readonly emulator_enableDiskTrace: (a: number) => void;
     readonly emulator_getDazzlerFrame: (a: number) => [number, number];
     readonly emulator_getDiskData: (a: number, b: number) => [number, number];
+    readonly emulator_getDiskTrace: (a: number) => [number, number];
     readonly emulator_getSerialOutput: (a: number) => [number, number];
     readonly emulator_getState: (a: number) => [number, number];
     readonly emulator_getTrace: (a: number, b: bigint, c: number) => [number, number];

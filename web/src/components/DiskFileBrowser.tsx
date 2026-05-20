@@ -48,7 +48,92 @@ export function DiskFileBrowser({ drive, onClose }: Props) {
   }, []);
 
   const handleReboot = useCallback(() => {
+    // Enable disk sector tracing to diagnose DIR issues
+    try { wasm.enableDiskTrace(); } catch { /* trace not available */ }
     warmReset();
+    // After 3 seconds, dump the trace to console and disable
+    setTimeout(() => {
+      try {
+        // Read memory at address 0 to find warm boot vector
+        const jmpAddr = wasm.readMemory(1) | (wasm.readMemory(2) << 8);
+        console.log('[BIOS] Address 0 → JMP', jmpAddr.toString(16).padStart(4, '0'));
+        
+        // Read BIOS jump table (17 entries × 3 bytes)
+        const biosBase = jmpAddr - 3; // WBOOT is at BIOS+3
+        console.log('[BIOS] Jump table at', biosBase.toString(16).padStart(4, '0'));
+        const names = ['BOOT','WBOOT','CONST','CONIN','CONOUT','LIST','PUNCH','READER',
+          'HOME','SELDSK','SETTRK','SETSEC','SETDMA','READ','WRITE','LISTST','SECTRAN'];
+        for (let j = 0; j < 17; j++) {
+          const addr = biosBase + j * 3;
+          const target = wasm.readMemory(addr + 1) | (wasm.readMemory(addr + 2) << 8);
+          console.log('  ' + names[j].padEnd(8) + 'JMP', target.toString(16).padStart(4, '0'));
+        }
+        
+        // Read SECTRAN implementation
+        const sectranAddr = wasm.readMemory(biosBase + 16*3 + 1) | (wasm.readMemory(biosBase + 16*3 + 2) << 8);
+        console.log('[BIOS] SECTRAN code at', sectranAddr.toString(16).padStart(4, '0'), ':');
+        const sectranBytes: string[] = [];
+        for (let i = 0; i < 16; i++) {
+          sectranBytes.push(wasm.readMemory(sectranAddr + i).toString(16).padStart(2, '0'));
+        }
+        console.log('  ', sectranBytes.join(' '));
+        
+        // Read SELDSK implementation to find DPH
+        const seldskAddr = wasm.readMemory(biosBase + 9*3 + 1) | (wasm.readMemory(biosBase + 9*3 + 2) << 8);
+        console.log('[BIOS] SELDSK code at', seldskAddr.toString(16).padStart(4, '0'), ':');
+        const seldskBytes: string[] = [];
+        for (let i = 0; i < 32; i++) {
+          seldskBytes.push(wasm.readMemory(seldskAddr + i).toString(16).padStart(2, '0'));
+        }
+        console.log('  ', seldskBytes.join(' '));
+        
+        // Find LXI H in SELDSK to get DPH table address
+        for (let i = 0; i < 32; i++) {
+          if (wasm.readMemory(seldskAddr + i) === 0x21) { // LXI H
+            const dphAddr = wasm.readMemory(seldskAddr + i + 1) | (wasm.readMemory(seldskAddr + i + 2) << 8);
+            if (dphAddr > 0xD000 && dphAddr < 0xF000) {
+              console.log('[BIOS] DPH table at', dphAddr.toString(16).padStart(4, '0'));
+              // Read first DPH (16 bytes)
+              const xlt = wasm.readMemory(dphAddr) | (wasm.readMemory(dphAddr + 1) << 8);
+              const dpb = wasm.readMemory(dphAddr + 10) | (wasm.readMemory(dphAddr + 11) << 8);
+              console.log('  XLT=' + xlt.toString(16).padStart(4, '0'), 'DPB=' + dpb.toString(16).padStart(4, '0'));
+              
+              if (xlt !== 0 && xlt > 0xD000 && xlt < 0xF000) {
+                // Dump skew table
+                const skew: number[] = [];
+                for (let s = 0; s < 32; s++) skew.push(wasm.readMemory(xlt + s));
+                console.log('  SECTRAN table:', skew.join(','));
+              } else {
+                console.log('  XLT=0 → NO sector translation (identity mapping)');
+              }
+              
+              if (dpb > 0xD000 && dpb < 0xF000) {
+                const spt = wasm.readMemory(dpb) | (wasm.readMemory(dpb + 1) << 8);
+                const bsh = wasm.readMemory(dpb + 2);
+                const off = wasm.readMemory(dpb + 13) | (wasm.readMemory(dpb + 14) << 8);
+                console.log('  DPB: SPT=' + spt + ' BSH=' + bsh + ' (BLS=' + (128 << bsh) + ') OFF=' + off);
+              }
+              break;
+            }
+          }
+        }
+
+        const trace = wasm.getDiskTrace();
+        if (trace.length > 0) {
+          console.log('[DCDD Trace] Sector reads after reboot (' + (trace.length / 2) + ' reads):');
+          const byTrack = new Map<number, number[]>();
+          for (let i = 0; i < trace.length; i += 2) {
+            const t = trace[i], s = trace[i + 1];
+            if (!byTrack.has(t)) byTrack.set(t, []);
+            byTrack.get(t)!.push(s);
+          }
+          for (const [t, sectors] of byTrack) {
+            console.log(`  Track ${t}: sectors [${sectors.join(', ')}]`);
+          }
+        }
+        wasm.disableDiskTrace();
+      } catch (e) { console.error('[Trace error]', e); }
+    }, 3000);
     setModState('idle');
     onClose();
   }, [warmReset, onClose]);

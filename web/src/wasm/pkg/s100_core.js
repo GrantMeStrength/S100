@@ -25,6 +25,18 @@ export class Emulator {
         wasm.emulator_clearBreakpoints(this.__wbg_ptr);
     }
     /**
+     * Disable DCDD sector trace recording.
+     */
+    disableDiskTrace() {
+        wasm.emulator_disableDiskTrace(this.__wbg_ptr);
+    }
+    /**
+     * Enable DCDD sector trace recording.
+     */
+    enableDiskTrace() {
+        wasm.emulator_enableDiskTrace(this.__wbg_ptr);
+    }
+    /**
      * Render the Dazzler frame buffer to RGBA pixels.
      * Returns [width_lo, width_hi, height_lo, height_hi, ...rgba_bytes],
      * or an empty array if no Dazzler card is present or the display is disabled.
@@ -44,6 +56,16 @@ export class Emulator {
      */
     getDiskData(drive) {
         const ret = wasm.emulator_getDiskData(this.__wbg_ptr, drive);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * Get recorded sector trace as flat array: [track0, sector0, track1, sector1, ...]
+     * @returns {Uint8Array}
+     */
+    getDiskTrace() {
+        const ret = wasm.emulator_getDiskTrace(this.__wbg_ptr);
         var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         return v1;
