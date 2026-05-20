@@ -96,6 +96,22 @@ function logicalToPhysical(logicalSector: number, _geom: DiskGeometry): number {
 const DCDD_SECTOR_RAW = 137;  // 3-byte preamble + 128 payload + 6 trailer
 const DCDD_HEADER = 3;
 
+/**
+ * Compute the actual 0-based hardware sector for DCDD images.
+ *
+ * The Altair CP/M 2.2 BIOS applies an additional software sector interleave
+ * on tracks >= 6 (routine at E96A): hw = (B * 17) % 32, where B is the
+ * 0-based SECTRAN result.  Tracks 0-5 (system + first data tracks) use B
+ * directly with no transform.
+ *
+ * physSector is 1-based (from SECTRAN); we convert to 0-based internally.
+ */
+function dcddHardwareSector(track: number, physSector: number): number {
+  const b = physSector - 1;                   // 0-based SECTRAN result
+  if (track < 6) return b;                    // no transform on early tracks
+  return (b * 17) % 32;                       // BIOS E96A interleave
+}
+
 function isDcdd(data: Uint8Array): boolean {
   // 337,568 or 337,664 (with 96-byte trailing padding from SIMH)
   return data.length === 77 * 32 * 137 || data.length === 77 * 32 * 137 + 96;
@@ -108,7 +124,8 @@ function isDcdd(data: Uint8Array): boolean {
  */
 function readSector(data: Uint8Array, track: number, physSector: number, geom: DiskGeometry): Uint8Array | null {
   if (isDcdd(data)) {
-    const off = (track * geom.sectorsPerTrack + (physSector - 1)) * DCDD_SECTOR_RAW + DCDD_HEADER;
+    const hw = dcddHardwareSector(track, physSector);
+    const off = (track * geom.sectorsPerTrack + hw) * DCDD_SECTOR_RAW + DCDD_HEADER;
     if (off + 128 > data.length) return null;
     return data.slice(off, off + 128);
   }
@@ -125,7 +142,8 @@ function readSector(data: Uint8Array, track: number, physSector: number, geom: D
 function writeSector(data: Uint8Array, track: number, physSector: number, geom: DiskGeometry, payload: Uint8Array): boolean {
   if (payload.length !== 128) return false;
   if (isDcdd(data)) {
-    const sectorBase = (track * geom.sectorsPerTrack + (physSector - 1)) * DCDD_SECTOR_RAW;
+    const hw = dcddHardwareSector(track, physSector);
+    const sectorBase = (track * geom.sectorsPerTrack + hw) * DCDD_SECTOR_RAW;
     const off = sectorBase + DCDD_HEADER;
     if (off + 128 > data.length) return false;
     data.set(payload, off);
