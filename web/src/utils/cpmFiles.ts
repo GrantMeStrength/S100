@@ -37,14 +37,17 @@ export const GEOM_8INCH: DiskGeometry = {
 };
 
 // DCDD: 77 tracks × 32 sectors × 137 bytes (3-byte preamble + 128 payload + 6 trailer)
+// DPB extracted from the Altair CP/M 2.2 BIOS in AltairCPM22.dsk:
+//   SPT=32, BSH=4, BLM=15, EXM=0, DSM=149, AL0=C0, OFF=2
+// AL0=0xC0 reserves blocks 0-1 for directory (2 × 2048 = 4096 bytes = 128 entry slots).
 export const GEOM_DCDD: DiskGeometry = {
   tracks: 77,
   sectorsPerTrack: 32,
   sectorSize: 128,          // logical payload
   reservedTracks: 2,        // Altair CP/M 2.2 uses 2 reserved tracks
-  blockSize: 1024,
-  dirEntries: 64,
-  totalBlocks: 300,         // (77-2)*32*128/1024 = 300
+  blockSize: 2048,          // BSH=4 → BLS=2048
+  dirEntries: 128,          // 2 dir blocks × 2048 / 32 = 128 slots
+  totalBlocks: 150,         // DSM+1 = 150
 };
 
 // ── CP/M Directory Entry ──────────────────────────────────────────────────────
@@ -75,7 +78,8 @@ export interface CpmFile {
 
 /**
  * Convert a logical sector number (0-based) to a physical sector (1-based).
- * Disk images store data in logical sector order, so this is a simple 1:1 mapping.
+ * The DCDD disk image stores sectors in physical order; the BIOS SECTRAN
+ * is handled by CP/M at runtime, so our image access uses identity mapping.
  */
 function logicalToPhysical(logicalSector: number, _geom: DiskGeometry): number {
   return logicalSector + 1;
@@ -382,7 +386,10 @@ export function writeFile(
   }
 
   // Create directory entries (extents)
-  const blocksPerExtent = 16; // 16 block pointers per directory entry (8-bit)
+  // Each extent covers up to 16384 bytes (128 records × 128 bytes).
+  // With 8-bit block numbers (DSM < 256), all 16 pointer slots are available,
+  // but only blocksPerExtent slots are used per CP/M extent.
+  const blocksPerExtent = Math.floor(16384 / geom.blockSize); // 8 for BLS=2048, 16 for BLS=1024
   const extentsNeeded = Math.ceil(blocksNeeded / blocksPerExtent);
 
   // Find free directory slots
@@ -425,9 +432,9 @@ export function writeFile(
     const records = Math.ceil(bytesInExtent / 128);
     dirData[offset + 15] = records > 128 ? 128 : records;
 
-    // Block pointers
+    // Block pointers (only first blocksPerExtent slots used, rest must be 0)
     for (let i = 0; i < 16; i++) {
-      if (blockIdx < blocksNeeded) {
+      if (i < blocksPerExtent && blockIdx < blocksNeeded) {
         dirData[offset + 16 + i] = freeBlocks[blockIdx++];
       } else {
         dirData[offset + 16 + i] = 0;
