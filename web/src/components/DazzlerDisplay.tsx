@@ -80,7 +80,7 @@ export function DazzlerDisplay() {
         }}
       />
       <div style={{ fontSize: 10, color: '#6e7681', marginTop: 2, fontFamily: 'monospace' }}>
-        Port 0x0E: NX (addr+enable) · 0x0F: CC (color/X4)
+        Port 0x0E: NX (addr+enable) · 0x0F: CC (format/color)
       </div>
     </div>
   );
