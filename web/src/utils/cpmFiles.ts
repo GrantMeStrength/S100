@@ -24,6 +24,7 @@ export interface DiskGeometry {
   blockSize: number;         // BLS — allocation block size
   dirEntries: number;        // DRM + 1
   totalBlocks: number;       // DSM + 1
+  dirAllocBlocks: number;    // blocks reserved for directory (from AL0/AL1 bitmap)
 }
 
 export const GEOM_8INCH: DiskGeometry = {
@@ -34,6 +35,7 @@ export const GEOM_8INCH: DiskGeometry = {
   blockSize: 1024,
   dirEntries: 64,
   totalBlocks: 243,
+  dirAllocBlocks: 2,         // AL0=0xC0 → 2 blocks
 };
 
 // DCDD: 77 tracks × 32 sectors × 137 bytes (3-byte preamble + 128 payload + 6 trailer)
@@ -46,8 +48,9 @@ export const GEOM_DCDD: DiskGeometry = {
   sectorSize: 128,          // logical payload
   reservedTracks: 2,        // Altair CP/M 2.2 uses 2 reserved tracks
   blockSize: 2048,          // BSH=4 → BLS=2048
-  dirEntries: 64,           // DRM=63 → 64 entries (1 dir block used)
+  dirEntries: 64,           // DRM=63 → 64 entries
   totalBlocks: 150,         // DSM+1 = 150
+  dirAllocBlocks: 2,        // AL0=0xC0 → blocks 0-1 reserved for directory
 };
 
 // ── CP/M Directory Entry ──────────────────────────────────────────────────────
@@ -93,8 +96,7 @@ function logicalToPhysical(logicalSector: number, _geom: DiskGeometry): number {
 
 // ── Low-level disk access ─────────────────────────────────────────────────────
 
-const DCDD_SECTOR_RAW = 137;  // 3-byte preamble + 128 payload + 6 trailer
-const DCDD_HEADER = 3;
+const DCDD_SECTOR_RAW = 137;  // total bytes per sector on disk
 
 /**
  * Compute the actual 0-based hardware sector for DCDD images.
@@ -119,15 +121,18 @@ function isDcdd(data: Uint8Array): boolean {
 
 /**
  * Read a 128-byte sector from the disk image.
- * For flat images: offset = (track * SPT + (physSector - 1)) * 128
- * For DCDD images: offset = (track * 32 + (physSector - 1)) * 137 + 3  (skip 3-byte preamble)
+ *
+ * DCDD sector layout differs by track:
+ *   Tracks 0-5:  [preamble:3][payload:128][marker:1][cksum:1][pad:4]  = 137
+ *   Tracks 6+:   [preamble:3][extra:4][payload:128][stop:1][retry:1]  = 137
  */
 function readSector(data: Uint8Array, track: number, physSector: number, geom: DiskGeometry): Uint8Array | null {
   if (isDcdd(data)) {
     const hw = dcddHardwareSector(track, physSector);
-    const off = (track * geom.sectorsPerTrack + hw) * DCDD_SECTOR_RAW + DCDD_HEADER;
-    if (off + 128 > data.length) return null;
-    return data.slice(off, off + 128);
+    const sectorBase = (track * geom.sectorsPerTrack + hw) * DCDD_SECTOR_RAW;
+    const payloadOff = sectorBase + (track < 6 ? 3 : 7);
+    if (payloadOff + 128 > data.length) return null;
+    return data.slice(payloadOff, payloadOff + 128);
   }
   const off = (track * geom.sectorsPerTrack + (physSector - 1)) * geom.sectorSize;
   if (off + 128 > data.length) return null;
@@ -136,21 +141,38 @@ function readSector(data: Uint8Array, track: number, physSector: number, geom: D
 
 /**
  * Write a 128-byte sector into the disk image (mutates `data` in place).
- * For DCDD images, also updates the checksum byte (sum of payload mod 256)
- * stored at offset +132 within the 137-byte raw sector.
+ *
+ * DCDD checksum differs by track:
+ *   Tracks 0-5: payload at byte 3; checksum at byte 132 = sum(payload)
+ *   Tracks 6+:  payload at byte 7; checksum at byte 4  = sum(bytes 2,3,5,6 + payload)
  */
 function writeSector(data: Uint8Array, track: number, physSector: number, geom: DiskGeometry, payload: Uint8Array): boolean {
   if (payload.length !== 128) return false;
   if (isDcdd(data)) {
     const hw = dcddHardwareSector(track, physSector);
     const sectorBase = (track * geom.sectorsPerTrack + hw) * DCDD_SECTOR_RAW;
-    const off = sectorBase + DCDD_HEADER;
-    if (off + 128 > data.length) return false;
-    data.set(payload, off);
-    // Update checksum at byte 132 of the raw sector (sum of 128 payload bytes mod 256)
-    let cksum = 0;
-    for (let i = 0; i < 128; i++) cksum = (cksum + payload[i]) & 0xFF;
-    if (sectorBase + 132 < data.length) data[sectorBase + 132] = cksum;
+    if (track < 6) {
+      // Tracks 0-5: payload at byte 3, checksum at byte 132
+      const off = sectorBase + 3;
+      if (off + 128 > data.length) return false;
+      data.set(payload, off);
+      let cksum = 0;
+      for (let i = 0; i < 128; i++) cksum = (cksum + payload[i]) & 0xFF;
+      if (sectorBase + 132 < data.length) data[sectorBase + 132] = cksum;
+    } else {
+      // Tracks 6+: payload at byte 7, checksum at byte 4
+      const off = sectorBase + 7;
+      if (off + 128 > data.length) return false;
+      data.set(payload, off);
+      // Stop marker (0xFF) and retry flag (0x00) — BIOS validates both
+      data[sectorBase + 135] = 0xFF;
+      data[sectorBase + 136] = 0x00;
+      // Checksum = sum(byte2 + byte3 + byte5 + byte6 + 128 payload bytes) mod 256
+      let cksum = (data[sectorBase + 2] + data[sectorBase + 3]
+                 + data[sectorBase + 5] + data[sectorBase + 6]) & 0xFF;
+      for (let i = 0; i < 128; i++) cksum = (cksum + payload[i]) & 0xFF;
+      if (sectorBase + 4 < data.length) data[sectorBase + 4] = cksum;
+    }
     return true;
   }
   const off = (track * geom.sectorsPerTrack + (physSector - 1)) * geom.sectorSize;
@@ -256,9 +278,8 @@ function parseDirEntry(raw: Uint8Array, offset: number): CpmDirEntry | null {
 export function listFiles(data: Uint8Array): CpmFile[] {
   const geom = detectGeometry(data);
 
-  // Directory occupies the first N blocks (ceil(dirEntries * 32 / blockSize))
-  const dirBytes = geom.dirEntries * 32;
-  const dirBlocks = Math.ceil(dirBytes / geom.blockSize);
+  // Directory occupies the first N blocks (from AL0/AL1 allocation bitmap)
+  const dirBlocks = geom.dirAllocBlocks;
 
   // Read all directory blocks
   const dirData = new Uint8Array(dirBlocks * geom.blockSize);
@@ -372,7 +393,7 @@ export function writeFile(
 
   // Find free blocks (by scanning directory to see which are in use)
   const usedBlocks = new Set<number>();
-  const dirBlocks = Math.ceil(geom.dirEntries * 32 / geom.blockSize);
+  const dirBlocks = geom.dirAllocBlocks;
 
   // Directory blocks are implicitly allocated (blocks 0..dirBlocks-1)
   for (let b = 0; b < dirBlocks; b++) usedBlocks.add(b);
@@ -494,7 +515,7 @@ function deleteFileFromImage(
   user: number,
   geom: DiskGeometry,
 ): void {
-  const dirBlocks = Math.ceil(geom.dirEntries * 32 / geom.blockSize);
+  const dirBlocks = geom.dirAllocBlocks;
   const dirData = new Uint8Array(dirBlocks * geom.blockSize);
   for (let b = 0; b < dirBlocks; b++) {
     const block = readBlock(data, b, geom);
@@ -591,7 +612,7 @@ export function getDiskStats(data: Uint8Array): {
 } {
   const geom = detectGeometry(data);
   const files = listFiles(data);
-  const dirBlocks = Math.ceil(geom.dirEntries * 32 / geom.blockSize);
+  const dirBlocks = geom.dirAllocBlocks;
 
   const usedBlocks = new Set<number>();
   for (let b = 0; b < dirBlocks; b++) usedBlocks.add(b);
