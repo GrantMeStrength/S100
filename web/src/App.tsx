@@ -36,7 +36,7 @@ export default function App() {
     return (cpu?.params?.speed_hz as number) ?? 2_000_000;
   });
   const hasDazzler  = useMachineStore(s => s.slots.some(sl => sl.card === 'dazzler'));
-  const hasJoystick = useMachineStore(s => s.slots.some(sl => sl.card === 'joystick'));
+  const hasJoystick = useMachineStore(s => s.slots.some(sl => sl.card === 'joystick' || sl.card === 'dazzler'));
   const hasVdm      = useMachineStore(s => s.slots.some(sl => sl.card === 'vdm'));
   const cpuLabel    = useMachineStore(s => s.slots.some(sl => sl.card === 'cpu_z80') ? 'Zilog Z80' : 'Intel 8080');
 

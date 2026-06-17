@@ -351,6 +351,12 @@ impl Machine {
             }
         }
 
+        // Auto-add joystick card if Dazzler is present but no joystick was explicitly configured
+        if self.dazzler_idx.is_some() && self.joystick_idx.is_none() {
+            self.joystick_idx = Some(self.bus.cards.len());
+            self.bus.add_card(Box::new(JoystickCard::new("D+7A Joystick", 0x18, 0x42)));
+        }
+
         if let Some(pc) = config.startup_pc {
             self.set_pc(pc);
         }
