@@ -45,8 +45,8 @@ function buttonsNibble(ui: number): number {
 function axisOffset(ui: number, negBit: number, posBit: number): number {
   const neg = (ui >> negBit) & 1;
   const pos = (ui >> posBit) & 1;
-  if (neg && !pos) return 0x81;  // -127 signed
-  if (!neg && pos) return 0x7F;  // +127 signed
+  if (neg && !pos) return 0xFF;  // max negative (255)
+  if (!neg && pos) return 0x01;  // max positive (1)
   return 0x00;                    // center
 }
 function computePorts(js1: number, js2: number) {

@@ -49,14 +49,15 @@ impl JoystickCard {
         self.pressed2 = value;
     }
 
-    /// Signed axis: 0x00 = center, 0x7F = max positive, 0x81 = max negative.
+    /// Signed axis: 0x00 = center, full deflection values.
+    /// Uses extreme values (0xFF / 0x01) to exceed any game deadzone thresholds.
     fn axis_signed(ui: u8, neg_bit: u8, pos_bit: u8) -> u8 {
         let neg = (ui >> neg_bit) & 1;
         let pos = (ui >> pos_bit) & 1;
         match (neg, pos) {
-            (1, 0) => 0x81_u8,
-            (0, 1) => 0x7F,
-            _ => 0x00,
+            (1, 0) => 0xFF_u8,  // max negative (255) — matches "unplugged" left direction
+            (0, 1) => 0x01,     // max positive (1) — clearly in 1-127 range
+            _ => 0x00,          // center
         }
     }
 
