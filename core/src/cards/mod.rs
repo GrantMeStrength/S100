@@ -10,4 +10,5 @@ pub mod rom;
 pub mod serial;
 pub mod sio_88;
 pub mod cpu_z80;
+pub mod joystick;
 pub mod vdm;

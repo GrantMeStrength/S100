@@ -11,6 +11,7 @@ import { DiskManager } from './components/DiskManager';
 import { ProgrammedOutputPanel } from './components/ProgrammedOutputPanel';
 import { MemoryView } from './components/MemoryView';
 import { DazzlerDisplay } from './components/DazzlerDisplay';
+import { VirtualJoystick } from './components/VirtualJoystick';
 import { VdmDisplay } from './components/VdmDisplay';
 import { DisassemblerView } from './components/DisassemblerView';
 import { parseIntelHex, hexLoadSummary } from './utils/intelHex';
@@ -35,6 +36,7 @@ export default function App() {
     return (cpu?.params?.speed_hz as number) ?? 2_000_000;
   });
   const hasDazzler  = useMachineStore(s => s.slots.some(sl => sl.card === 'dazzler'));
+  const hasJoystick = useMachineStore(s => s.slots.some(sl => sl.card === 'joystick'));
   const hasVdm      = useMachineStore(s => s.slots.some(sl => sl.card === 'vdm'));
   const cpuLabel    = useMachineStore(s => s.slots.some(sl => sl.card === 'cpu_z80') ? 'Zilog Z80' : 'Intel 8080');
 
@@ -297,7 +299,10 @@ export default function App() {
           {hasDazzler && (
             <>
               <Divider />
-              <DazzlerDisplay />
+              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <DazzlerDisplay />
+                {hasJoystick && <VirtualJoystick />}
+              </div>
             </>
           )}
           {hasVdm && (

@@ -12,6 +12,7 @@ use crate::cards::{
     fdc::FloppyController,
     fdc_fif::FifCard,
     fdc_wd1793::WD1793Card,
+    joystick::JoystickCard,
     ram::RamCard,
     rom::RomCard,
     serial::SerialCard,
@@ -132,6 +133,7 @@ pub struct Machine {
     pub fdc_idx: Option<usize>,
     pub fif_idx: Option<usize>,
     pub dazzler_idx: Option<usize>,
+    pub joystick_idx: Option<usize>,
     pub vdm_idx: Option<usize>,
     /// IMSAI Programmed Output latch — captures the last byte written to port 0xFF.
     pub programmed_output: u8,
@@ -153,6 +155,7 @@ impl Machine {
             fdc_idx: None,
             fif_idx: None,
             dazzler_idx: None,
+            joystick_idx: None,
             vdm_idx: None,
             programmed_output: 0,
             breakpoints: HashSet::new(),
@@ -173,6 +176,7 @@ impl Machine {
         self.fdc_idx = None;
         self.fif_idx = None;
         self.dazzler_idx = None;
+        self.joystick_idx = None;
         self.vdm_idx = None;
         self.programmed_output = 0;
         // breakpoints are intentionally preserved across config reloads
@@ -287,6 +291,15 @@ impl Machine {
                 "dazzler" => {
                     self.dazzler_idx = Some(self.bus.cards.len());
                     self.bus.add_card(Box::new(DazzlerCard::new("Dazzler")));
+                }
+
+                "joystick" => {
+                    let base = slot.params.get("base_port")
+                        .and_then(Value::as_u64).unwrap_or(0x18) as u8;
+                    let btn = slot.params.get("button_port")
+                        .and_then(Value::as_u64).unwrap_or(0x42) as u8;
+                    self.joystick_idx = Some(self.bus.cards.len());
+                    self.bus.add_card(Box::new(JoystickCard::new("D+7A Joystick", base, btn)));
                 }
 
                 "cuter" => {
@@ -609,6 +622,28 @@ impl Machine {
     /// Write a byte to an I/O port (broadcasts to all cards on the bus).
     pub fn io_write_port(&mut self, port: u8, value: u8) {
         self.bus.io_write(port, value);
+    }
+
+    /// Set joystick 1 state byte (called from the host UI layer).
+    pub fn set_joystick_state(&mut self, value: u8) {
+        if let Some(idx) = self.joystick_idx {
+            if let Some(card) = self.bus.cards.get_mut(idx) {
+                if let Some(js) = card.as_any_mut().downcast_mut::<JoystickCard>() {
+                    js.set_state(value);
+                }
+            }
+        }
+    }
+
+    /// Set joystick 2 state byte (called from the host UI layer).
+    pub fn set_joystick_state2(&mut self, value: u8) {
+        if let Some(idx) = self.joystick_idx {
+            if let Some(card) = self.bus.cards.get_mut(idx) {
+                if let Some(js) = card.as_any_mut().downcast_mut::<JoystickCard>() {
+                    js.set_state2(value);
+                }
+            }
+        }
     }
 
     // ── Serial I/O ─────────────────────────────────────────────────────────

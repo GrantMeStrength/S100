@@ -91,6 +91,15 @@ export class Emulator {
      */
     sendSerialString(s: string): void;
     /**
+     * Set joystick 1 state (Cromemco D+7A emulation).
+     * Bit layout: 0=Up, 1=Down, 2=Left, 3=Right, 4=Btn1, 5=Btn2, 6=Btn4.
+     */
+    setJoystickState(value: number): void;
+    /**
+     * Set joystick 2 state (Cromemco D+7A emulation).
+     */
+    setJoystickState2(value: number): void;
+    /**
      * Set the CPU program counter directly (used for ROM-based boot sequences).
      */
     setPC(pc: number): void;
@@ -134,6 +143,8 @@ export interface InitOutput {
     readonly emulator_reset: (a: number) => void;
     readonly emulator_sendSerialInput: (a: number, b: number) => void;
     readonly emulator_sendSerialString: (a: number, b: number, c: number) => void;
+    readonly emulator_setJoystickState: (a: number, b: number) => void;
+    readonly emulator_setJoystickState2: (a: number, b: number) => void;
     readonly emulator_setPC: (a: number, b: number) => void;
     readonly emulator_step: (a: number, b: number) => number;
     readonly emulator_traceTotal: (a: number) => bigint;

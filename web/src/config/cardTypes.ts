@@ -308,6 +308,26 @@ export const CARD_TYPES: CardTypeInfo[] = [
     configFields: [],
   },
   {
+    id: 'joystick',
+    label: 'Cromemco D+7A Joystick',
+    shortLabel: 'JS-1',
+    color: '#1a2e0d',
+    accent: '#4ade80',
+    description: 'Cromemco D+7A I/O board with JS-1 joystick interface. Emulates a 6821 PIA providing parallel I/O for Dazzler games. Active-low signals (0 = pressed). An on-screen virtual joystick appears automatically. Bit layout: 0=Up, 1=Down, 2=Left, 3=Right, 4=Btn1, 5=Btn2, 6=Btn4. Also responds to arrow keys / WASD + Space/Z/X on the keyboard.',
+    summary: 'D+7A PIA joystick, ports 0x18–0x1B',
+    ports: [
+      { range: 'base+0 (default 0x18)', direction: 'IN/OUT', description: 'PIA Port A data/DDR — joystick state (active-low). Bits: 0=Up, 1=Down, 2=Left, 3=Right, 4=Btn1, 5=Btn2, 6=Btn4.' },
+      { range: 'base+1 (default 0x19)', direction: 'IN/OUT', description: 'PIA Control Register A — bit 2 selects data vs DDR.' },
+      { range: 'base+2 (default 0x1A)', direction: 'IN/OUT', description: 'PIA Port B data/DDR.' },
+      { range: 'base+3 (default 0x1B)', direction: 'IN/OUT', description: 'PIA Control Register B.' },
+    ],
+    defaultParams: { base_port: 0x18, button_port: 0x42 },
+    configFields: [
+      { key: 'base_port', label: 'PIA base port (D+7A: 0x18)', type: 'hex', min: 0, max: 0xFC, default: 0x18 },
+      { key: 'button_port', label: 'Button port (TU-ART: 0x42)', type: 'hex', min: 0, max: 0xFF, default: 0x42 },
+    ],
+  },
+  {
     id: 'vdm',
     label: 'Processor Technology VDM-1',
     shortLabel: 'VDM-1',

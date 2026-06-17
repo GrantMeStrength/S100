@@ -220,6 +220,7 @@ export const ALTAIR_CPM_DAZZLER_MACHINE = JSON.stringify({
     { slot: 2, card: 'sio_88_2sio' },
     { slot: 3, card: 'dcdd_88' },
     { slot: 4, card: 'dazzler' },
+    { slot: 5, card: 'joystick',    params: { base_port: 0x18, button_port: 0x42 } },
   ],
   actions: [
     { id: 'altair-boot-vector', type: 'toggle', params: { entries: [{ addr: '0000', bytes: 'C3 00 FF' }] } },

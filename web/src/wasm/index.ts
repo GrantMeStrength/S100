@@ -153,6 +153,14 @@ export function ioWrite(port: number, value: number): void {
   getEmulator().ioWrite(port, value);
 }
 
+export function setJoystickState(value: number): void {
+  getEmulator().setJoystickState(value);
+}
+
+export function setJoystickState2(value: number): void {
+  getEmulator().setJoystickState2(value);
+}
+
 export function getDazzlerFrame(): Uint8Array {
   return getEmulator().getDazzlerFrame();
 }

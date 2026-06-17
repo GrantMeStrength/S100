@@ -122,6 +122,19 @@ impl Emulator {
         self.machine.io_write_port(port, value);
     }
 
+    /// Set joystick 1 state (Cromemco D+7A emulation).
+    /// Bit layout: 0=Up, 1=Down, 2=Left, 3=Right, 4=Btn1, 5=Btn2, 6=Btn4.
+    #[wasm_bindgen(js_name = setJoystickState)]
+    pub fn set_joystick_state(&mut self, value: u8) {
+        self.machine.set_joystick_state(value);
+    }
+
+    /// Set joystick 2 state (Cromemco D+7A emulation).
+    #[wasm_bindgen(js_name = setJoystickState2)]
+    pub fn set_joystick_state2(&mut self, value: u8) {
+        self.machine.set_joystick_state2(value);
+    }
+
     /// Set the CPU program counter directly (used for ROM-based boot sequences).
     #[wasm_bindgen(js_name = setPC)]
     pub fn set_pc(&mut self, pc: u16) {

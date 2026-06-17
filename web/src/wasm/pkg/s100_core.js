@@ -217,6 +217,21 @@ export class Emulator {
         wasm.emulator_sendSerialString(this.__wbg_ptr, ptr0, len0);
     }
     /**
+     * Set joystick 1 state (Cromemco D+7A emulation).
+     * Bit layout: 0=Up, 1=Down, 2=Left, 3=Right, 4=Btn1, 5=Btn2, 6=Btn4.
+     * @param {number} value
+     */
+    setJoystickState(value) {
+        wasm.emulator_setJoystickState(this.__wbg_ptr, value);
+    }
+    /**
+     * Set joystick 2 state (Cromemco D+7A emulation).
+     * @param {number} value
+     */
+    setJoystickState2(value) {
+        wasm.emulator_setJoystickState2(this.__wbg_ptr, value);
+    }
+    /**
      * Set the CPU program counter directly (used for ROM-based boot sequences).
      * @param {number} pc
      */
