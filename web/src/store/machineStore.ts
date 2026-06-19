@@ -366,6 +366,26 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     cpm: true,
   },
   {
+    // STARDUST — an original Dazzler shoot-em-up.
+    // Standalone Z80 binary, no CP/M needed. Uses Dazzler 64×64 color mode
+    // and D+7A joystick (port 0x18 buttons, port 0x19 X-axis).
+    // Joystick left/right to move, fire button to shoot.
+    id: 'stardust',
+    label: 'Stardust — Dazzler Game',
+    binaryUrl: pub('/STARDUST.COM'),
+    binaryLoadAddr: 0x0100,
+    startupPc: 0x0100,
+    machine: JSON.stringify({
+      name: 'Stardust (Dazzler)',
+      slots: [
+        { slot: 0, card: 'cpu_z80',  params: { speed_hz: 4_000_000 } },
+        { slot: 1, card: 'ram',      params: { base: 0, size: 65536 } },
+        { slot: 2, card: 'dazzler' },
+        { slot: 3, card: 'joystick', params: { base_port: 0x18, button_port: 0x42 } },
+      ],
+    }),
+  },
+  {
     // MITS Altair BASIC Rev. 4.0 (Eight-K Version) — copyright 1976 by MITS Inc.
     // ROM card holds BASIC at 0xC000. On Run, the toggle injects a copy loop at 0xFF00
     // that copies the 8 KB from ROM (0xC000) into RAM (0x0000), then jumps to 0x0000.
