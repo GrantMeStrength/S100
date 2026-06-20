@@ -647,31 +647,27 @@ a.jr('z', 'ma_right')
 
 # Moving left
 a.ld_a_lbl('abase_x')
+a.or_r('a')
+a.jr('z', 'ma_lrev')     # already at 0, can't go further left
 a.dec_r('a')
-# Check left edge: leftmost alien col 0 at x = 2 + abase_x
-# If 2 + abase_x < 1, reverse
-a.ld_r_r('b', 'a')
-a.add_a_n(2)          # A = effective leftmost x
-a.cp_n(1)
-a.jr('nc', 'ma_xok')  # still on screen
-# Hit left edge — reverse direction and drop
-a.ld_r_r('a', 'b')    # restore abase_x (undecremented would be +1 of current)
-a.inc_r('a')           # undo the dec
 a.ld_lbl_a('abase_x')
+a.ret()
+
+a.label('ma_lrev')
+# Hit left edge — reverse direction and drop
 a.xor_r('a')
-a.ld_lbl_a('adir_x')  # dir = 0 (right)
+a.ld_lbl_a('adir_x')     # dir = 0 (right)
 a.jr('ma_drop')
 
 a.label('ma_right')
 # Moving right
 a.ld_a_lbl('abase_x')
 a.inc_r('a')
-# Check right edge: rightmost alien col 7 at x = 51 + abase_x, width 3
-# If 51 + abase_x + 2 >= 63, reverse
+# Check right edge: rightmost alien col 7 at x = 51 + abase_x + 2 pixels wide
 a.ld_r_r('b', 'a')
 a.add_a_n(53)         # A = rightmost pixel x (51 + 2 + abase_x)
-a.cp_n(63)
-a.jr('c', 'ma_xok2')  # still on screen
+a.cp_n(64)
+a.jr('c', 'ma_rok')   # still on screen (< 64)
 # Hit right edge — reverse and drop
 a.ld_r_r('a', 'b')
 a.dec_r('a')           # undo the inc
@@ -680,12 +676,7 @@ a.ld_r_n('a', 1)
 a.ld_lbl_a('adir_x')  # dir = 1 (left)
 a.jr('ma_drop')
 
-a.label('ma_xok2')
-a.ld_r_r('a', 'b')
-a.ld_lbl_a('abase_x')
-a.ret()
-
-a.label('ma_xok')
+a.label('ma_rok')
 a.ld_r_r('a', 'b')
 a.ld_lbl_a('abase_x')
 a.ret()
