@@ -1389,30 +1389,19 @@ a.ret()
 
 # ─── draw_score: yellow bar at top of screen (over maze) ─────────────────────
 a.label('draw_score')
-a.ld_a_lbl('score')
-a.or_r('a')
-a.ret_cc('z')
-# BCD to binary
+# Bar width = (TOTAL_DOTS - dot_count) / 2  (0 to 63 pixels)
+a.ld_r_n('a', TOTAL_DOTS)
 a.ld_r_r('b', 'a')
-a.and_n(0x0F)
+a.ld_a_lbl('dot_count')
 a.ld_r_r('c', 'a')
 a.ld_r_r('a', 'b')
-a.srl('a'); a.srl('a'); a.srl('a'); a.srl('a')
-a.ld_r_r('b', 'a')
-a.add_a_r('a')          # *2
-a.add_a_r('a')          # *4
-a.add_a_r('b')          # *5
-a.add_a_r('a')          # *10
-a.add_a_r('c')          # + low
-a.cp_n(61)
-a.jr('c', 'ds_ok')
-a.ld_r_n('a', 60)
-a.label('ds_ok')
-a.ld_r_r('b', 'a')
-a.or_r('a')
+a.sub_r('c')             # A = dots eaten
+a.ret_cc('z')            # nothing eaten yet
+a.srl('a')               # A = dots_eaten / 2
 a.ret_cc('z')
-a.ld_r_n('d', 2)
-a.ld_r_n('e', 1)
+a.ld_r_r('b', 'a')
+a.ld_r_n('d', 0)
+a.ld_r_n('e', 0)
 a.ld_r_n('c', BRIGHT_YEL)
 a.call('hline')
 a.ret()
@@ -1449,13 +1438,14 @@ a.jr('nz', 'wf_p')
 a.ret()
 
 
-# ─── rand: LFSR PRNG → A ─────────────────────────────────────────────────────
+# ─── rand: LCG PRNG (period 256) → A ─────────────────────────────────────────
 a.label('rand')
 a.ld_a_lbl('rng')
-a.ld_r_r('b', 'a')
-a.add_a_r('a')
-a.xor_r('b')
-a.add_a_n(0x1D)
+a.ld_r_r('b', 'a')      # B = old
+a.sla('a')               # A = old * 2
+a.sla('a')               # A = old * 4
+a.add_a_r('b')           # A = old * 5
+a.add_a_n(3)             # A = old * 5 + 3
 a.ld_lbl_a('rng')
 a.ret()
 
