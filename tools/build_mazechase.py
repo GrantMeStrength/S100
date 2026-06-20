@@ -288,17 +288,26 @@ a.label('restart')
 a.call('init_game')
 
 # ─── Main loop ─────────────────────────────────────────────────────────────────
+# Initial full draw (once) — jumps to full_redraw which sets up then enters main_loop
+a.jp('full_redraw')
+
 a.label('main_loop')
 a.call('vsync')
 a.call('input')
 a.call('check_exit')
+
+# Erase player at current position (black 3×3)
+a.call('erase_player')
+# Erase ghosts at current positions
+a.call('erase_ghosts')
+
+# Move
 a.call('move_player')
 a.call('move_ghosts')
 a.call('eat_dot')
 a.call('check_ghost_col')
-a.call('clear_fb')
-a.call('draw_maze')
-a.call('draw_dots')
+
+# Draw at new positions
 a.call('draw_player')
 a.call('draw_ghosts')
 a.call('draw_score')
@@ -317,9 +326,16 @@ a.jp('main_loop')
 
 # ─── Level clear ──────────────────────────────────────────────────────────────
 a.label('level_clear')
-# Flash screen and restart level
 a.call('flash_screen')
 a.call('init_level')
+# Full redraw after level reset
+a.label('full_redraw')
+a.call('clear_fb')
+a.call('draw_maze')
+a.call('draw_dots')
+a.call('draw_player')
+a.call('draw_ghosts')
+a.call('draw_score')
 a.jp('main_loop')
 
 # ─── Game over ────────────────────────────────────────────────────────────────
@@ -1140,6 +1156,150 @@ a.jr('c', 'dd_row')
 a.ret()
 
 
+# ─── erase_player: draw black 3×3 at player pos, redraw dot if present ───────
+a.label('erase_player')
+a.ld_a_lbl('px')
+a.sla('a'); a.sla('a')
+a.inc_r('a')
+a.ld_r_r('d', 'a')
+a.ld_a_lbl('py')
+a.sla('a'); a.sla('a')
+a.inc_r('a')
+a.ld_r_r('e', 'a')
+a.ld_r_n('c', BLACK)
+a.push('de')
+a.ld_r_n('b', 3)
+a.call('hline')
+a.pop('de')
+a.push('de')
+a.inc_r('e')
+a.ld_r_n('b', 3)
+a.call('hline')
+a.pop('de')
+a.inc_r('e')
+a.inc_r('e')
+a.ld_r_n('b', 3)
+a.call('hline')
+# Redraw dot at this cell if it still exists
+a.ld_a_lbl('px')
+a.ld_r_r('b', 'a')
+a.ld_a_lbl('py')
+a.ld_r_r('c', 'a')
+a.call('redraw_dot')
+a.ret()
+
+
+# ─── erase_ghosts: black 3×3 at each ghost pos ──────────────────────────────
+a.label('erase_ghosts')
+a.ld_rp_label('hl', 'ghost_data')
+a.ld_r_n('e', 0)
+a.label('eg_lp')
+a.push('hl')
+a.push('de')
+# Get pixel position
+a.ld_r_r('a', '(hl)')
+a.sla('a'); a.sla('a')
+a.inc_r('a')
+a.ld_r_r('d', 'a')
+a.inc_rp('hl')
+a.ld_r_r('a', '(hl)')
+a.sla('a'); a.sla('a')
+a.inc_r('a')
+a.ld_r_r('e', 'a')
+# Draw black 3×3
+a.ld_r_n('c', BLACK)
+a.push('de')
+a.ld_r_n('b', 3)
+a.call('hline')
+a.pop('de')
+a.push('de')
+a.inc_r('e')
+a.ld_r_n('b', 3)
+a.call('hline')
+a.pop('de')
+a.inc_r('e')
+a.inc_r('e')
+a.ld_r_n('b', 3)
+a.call('hline')
+# Redraw dot at this ghost's cell
+a.pop('de')
+a.pop('hl')
+a.push('hl')
+a.push('de')
+a.ld_r_r('b', '(hl)')   # ghost cell x
+a.inc_rp('hl')
+a.ld_r_r('c', '(hl)')   # ghost cell y
+a.call('redraw_dot')
+a.pop('de')
+a.pop('hl')
+# Advance
+a.inc_rp('hl')
+a.inc_rp('hl')
+a.inc_rp('hl')
+a.inc_r('e')
+a.ld_r_r('a', 'e')
+a.cp_n(NUM_GHOSTS)
+a.jr('c', 'eg_lp')
+a.ret()
+
+
+# ─── redraw_dot: if dot exists at cell (B,C), draw white pixel at center ─────
+a.label('redraw_dot')
+a.push('bc')
+# Check if dot exists at (B, C)
+a.ld_rp_label('hl', 'dots')
+a.ld_r_r('a', 'c')
+a.sla('a')
+a.ld_r_r('e', 'a')
+a.ld_r_n('d', 0)
+a.add_hl_rp('de')
+a.ld_r_r('a', 'b')
+a.cp_n(8)
+a.jr('nc', 'rd_hi')
+a.ld_r_n('a', 7)
+a.sub_r('b')
+a.jr('rd_mk')
+a.label('rd_hi')
+a.inc_rp('hl')
+a.ld_r_r('a', 'b')
+a.sub_n(8)
+a.push('bc')
+a.ld_r_r('b', 'a')
+a.ld_r_n('a', 7)
+a.sub_r('b')
+a.pop('bc')
+a.label('rd_mk')
+# A = bit pos
+a.push('bc')
+a.ld_r_r('b', 'a')
+a.or_r('a')
+a.jr('z', 'rd_b0')
+a.ld_r_n('a', 1)
+a.label('rd_sl')
+a.sla('a')
+a.djnz('rd_sl')
+a.jr('rd_tst')
+a.label('rd_b0')
+a.ld_r_n('a', 1)
+a.label('rd_tst')
+a.and_r('(hl)')
+a.pop('bc')
+a.pop('bc')
+a.ret_cc('z')            # no dot
+# Draw dot pixel at cell center
+a.ld_r_r('a', 'b')
+a.sla('a'); a.sla('a')
+a.add_a_n(2)
+a.ld_r_r('d', 'a')
+a.ld_r_r('a', 'c')
+a.sla('a'); a.sla('a')
+a.add_a_n(2)
+a.ld_r_r('e', 'a')
+a.ld_r_n('c', WHITE)
+a.call('plot')
+a.ret()
+
+
 # ─── draw_player: 3×3 yellow at player cell ──────────────────────────────────
 a.label('draw_player')
 a.ld_a_lbl('px')
@@ -1189,10 +1349,10 @@ a.sla('a'); a.sla('a')
 a.inc_r('a')
 a.ld_r_r('e', 'a')
 
-# Color based on index
-a.pop('bc')              # B(was E) = index
+# Color based on index (index is in C after POP BC from pushed DE)
+a.pop('bc')              # B=old D, C=old E(index)
 a.push('bc')
-a.ld_r_r('a', 'b')
+a.ld_r_r('a', 'c')      # A = ghost index
 a.ld_rp_label('hl', 'ghost_colors')
 a.ld_r_r('c', 'a')
 a.ld_r_n('b', 0)
