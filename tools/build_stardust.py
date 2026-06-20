@@ -441,9 +441,19 @@ a.inc_r('a')
 a.ld_lbl_a('px')
 
 a.label('mp_fire')
-# Fire button: bit 0 active-low
+# Button 1 (bit 0): exit to CP/M
 a.ld_a_lbl('in_btn')
 a.bit(0, 'a')
+a.jr('nz', 'mp_b2')     # not pressed → check fire
+# Button 1 pressed — warm boot CP/M
+a.ld_r_n('a', 0x00)
+a.out_a(DAZ_NX)          # turn off Dazzler
+a.jp('cpm_exit')
+
+a.label('mp_b2')
+# Fire button: bit 1 active-low
+a.ld_a_lbl('in_btn')
+a.bit(1, 'a')
 a.jr('nz', 'mp_cool')   # not pressed
 
 a.ld_a_lbl('fcool')
@@ -585,11 +595,15 @@ a.ld_r_n('a', 2)
 a.label('axy_xm')
 a.add_a_n(7)
 a.djnz('axy_xm')
-a.ld_r_r('d', 'a')      # D = x
-a.jr('axy_xd')
+a.jr('axy_xa')
 a.label('axy_xz')
-a.ld_r_n('d', 2)        # x = 2 when col=0
-a.label('axy_xd')
+a.ld_r_n('a', 2)        # x = 2 when col=0
+a.label('axy_xa')
+# Add horizontal offset
+a.ld_r_r('d', 'a')      # save base x
+a.ld_a_lbl('abase_x')
+a.add_a_r('d')           # x + abase_x
+a.ld_r_r('d', 'a')      # D = final x
 
 # row = C >> 3
 a.ld_r_r('a', 'c')
@@ -626,19 +640,71 @@ a.ret_cc('nz')
 a.xor_r('a')
 a.ld_lbl_a('atimer')
 
+# Move horizontally
+a.ld_a_lbl('adir_x')
+a.or_r('a')
+a.jr('z', 'ma_right')
+
+# Moving left
+a.ld_a_lbl('abase_x')
+a.dec_r('a')
+# Check left edge: leftmost alien col 0 at x = 2 + abase_x
+# If 2 + abase_x < 1, reverse
+a.ld_r_r('b', 'a')
+a.add_a_n(2)          # A = effective leftmost x
+a.cp_n(1)
+a.jr('nc', 'ma_xok')  # still on screen
+# Hit left edge — reverse direction and drop
+a.ld_r_r('a', 'b')    # restore abase_x (undecremented would be +1 of current)
+a.inc_r('a')           # undo the dec
+a.ld_lbl_a('abase_x')
+a.xor_r('a')
+a.ld_lbl_a('adir_x')  # dir = 0 (right)
+a.jr('ma_drop')
+
+a.label('ma_right')
+# Moving right
+a.ld_a_lbl('abase_x')
+a.inc_r('a')
+# Check right edge: rightmost alien col 7 at x = 51 + abase_x, width 3
+# If 51 + abase_x + 2 >= 63, reverse
+a.ld_r_r('b', 'a')
+a.add_a_n(53)         # A = rightmost pixel x (51 + 2 + abase_x)
+a.cp_n(63)
+a.jr('c', 'ma_xok2')  # still on screen
+# Hit right edge — reverse and drop
+a.ld_r_r('a', 'b')
+a.dec_r('a')           # undo the inc
+a.ld_lbl_a('abase_x')
+a.ld_r_n('a', 1)
+a.ld_lbl_a('adir_x')  # dir = 1 (left)
+a.jr('ma_drop')
+
+a.label('ma_xok2')
+a.ld_r_r('a', 'b')
+a.ld_lbl_a('abase_x')
+a.ret()
+
+a.label('ma_xok')
+a.ld_r_r('a', 'b')
+a.ld_lbl_a('abase_x')
+a.ret()
+
+# Drop down one row on direction change
+a.label('ma_drop')
 a.ld_a_lbl('abase_y')
 a.inc_r('a')
 a.cp_n(38)                    # Bottom aliens at y+18=56, near player
-a.jr('c', 'ma_ok')
+a.jr('c', 'ma_dok')
 # Aliens reached bottom — lose a life
 a.ld_a_lbl('lives')
 a.or_r('a')
-a.jr('z', 'ma_ok')     # Already dead
+a.jr('z', 'ma_dok')     # Already dead
 a.dec_r('a')
 a.ld_lbl_a('lives')
 a.call('init_aliens')
 a.ret()
-a.label('ma_ok')
+a.label('ma_dok')
 a.ld_lbl_a('abase_y')
 a.ret()
 
@@ -1055,6 +1121,8 @@ a.ld_r_n('a', 4)
 a.ld_lbl_a('abase_y')
 a.xor_r('a')
 a.ld_lbl_a('atimer')
+a.ld_lbl_a('abase_x')
+a.ld_lbl_a('adir_x')
 a.ld_r_n('a', NALIENS)
 a.ld_lbl_a('alive_ct')
 a.ld_rp_label('hl', 'aliens')
@@ -1142,14 +1210,20 @@ a.label('wait_fire')
 # Wait release
 a.label('wf_r')
 a.in_a(JOY_BTN)
-a.bit(0, 'a')
+a.bit(1, 'a')
 a.jr('z', 'wf_r')
 # Wait press
 a.label('wf_p')
 a.in_a(JOY_BTN)
-a.bit(0, 'a')
+a.bit(1, 'a')
 a.jr('nz', 'wf_p')
 a.ret()
+
+# ─── cpm_exit: return to CP/M ────────────────────────────────────────────────
+a.label('cpm_exit')
+a.ei()
+a.emit(0xC3)      # JP 0x0000 (CP/M warm boot)
+a.emit16(0x0000)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1171,6 +1245,8 @@ a.label('in_x');      a.db(0)
 a.label('in_btn');    a.db(0xFF)
 a.label('fcool');     a.db(0)
 a.label('abase_y');   a.db(4)
+a.label('abase_x');   a.db(0)
+a.label('adir_x');    a.db(0)       # 0=right, 1=left
 a.label('atimer');    a.db(0)
 a.label('aspeed');    a.db(30)
 a.label('alive_ct');  a.db(NALIENS)
