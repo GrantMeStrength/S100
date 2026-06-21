@@ -489,9 +489,9 @@ a.ld_rp_nn('sp', 0x1F00)
 
 # Init Dazzler: normal, 2K, color
 a.ld_r_n('a', 0x30)
-a.out_a(DAZ_NX)
-a.ld_r_n('a', 0x80 | FB_PAGE)
 a.out_a(DAZ_NY)
+a.ld_r_n('a', 0x80 | FB_PAGE)
+a.out_a(DAZ_NX)
 
 # Seed RNG
 a.in_a(DAZ_NX)
