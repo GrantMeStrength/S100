@@ -111,12 +111,12 @@ impl S100Card for JoystickCard {
             }
             // JS1 X-axis (port 0x19): signed (center=0x00)
             1 => Some(Self::axis_signed(self.pressed1, 2, 3)),
-            // JS1 Y-axis (port 0x1A): signed (center=0x00)
-            2 => Some(Self::axis_signed(self.pressed1, 0, 1)),
+            // JS1 Y-axis (port 0x1A): signed (center=0x00, up=positive, down=negative)
+            2 => Some(Self::axis_signed(self.pressed1, 1, 0)),
             // JS2 X-axis (port 0x1B)
             3 => Some(Self::axis_signed(self.pressed2, 2, 3)),
             // JS2 Y-axis (port 0x1C)
-            4 => Some(Self::axis_signed(self.pressed2, 0, 1)),
+            4 => Some(Self::axis_signed(self.pressed2, 1, 0)),
             _ => Some(0x00),
         }
     }

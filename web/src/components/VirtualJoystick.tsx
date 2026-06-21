@@ -132,12 +132,14 @@ function JoystickUnit({ label, keyMap, keyHint, onState }: {
   const keyBitsRef = useRef(0);
   const dpadBitsRef = useRef(0);
   const btnBitsRef = useRef(0);
+  const onStateRef = useRef(onState);
+  onStateRef.current = onState;
 
   const sync = useCallback(() => {
     const combined = keyBitsRef.current | dpadBitsRef.current | btnBitsRef.current;
     setDisplayState(combined);
-    onState(combined);
-  }, [onState]);
+    onStateRef.current(combined);
+  }, []);
 
   // Keyboard handler
   useEffect(() => {

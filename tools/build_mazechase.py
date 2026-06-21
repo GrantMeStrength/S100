@@ -14,7 +14,7 @@ Dots: 1×1 white pixel at center of each path cell
 Joystick: Cromemco D+7A
   Port 0x18: buttons (active-LOW, bit0=Btn1, bit1=Btn2)
   Port 0x19: X-axis (0=center, 1-127=right, 128-255=left)
-  Port 0x1A: Y-axis (0=center, 1-127=down, 128-255=up)
+  Port 0x1A: Y-axis (0=center, 1-127=up, 128-255=down)
 
 Controls: Joystick to move, Button 1 = exit to CP/M
 """
@@ -515,16 +515,16 @@ a.ret()
 a.label('in_chky')
 a.ld_a_lbl('in_y')
 a.cp_n(128)
-a.jr('nc', 'in_up')
+a.jr('nc', 'in_down')
 a.or_r('a')
 a.jr('z', 'in_done')     # center
-# Down (1-127)
-a.ld_r_n('a', DIR_DOWN)
+# Up (1-127): joystick pushed up = positive on real hardware
+a.ld_r_n('a', DIR_UP)
 a.ld_lbl_a('want_dir')
 a.ret()
-a.label('in_up')
-# Up (128-255)
-a.ld_r_n('a', DIR_UP)
+a.label('in_down')
+# Down (128-255): joystick pushed down = negative on real hardware
+a.ld_r_n('a', DIR_DOWN)
 a.ld_lbl_a('want_dir')
 a.ret()
 a.label('in_done')
