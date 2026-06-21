@@ -286,61 +286,64 @@ def emit_enemy_hit_city(slot):
 
 
 def emit_counter_move(slot):
+    """Bresenham-style movement: Y is always the driving axis (missile goes up).
+    Each frame: decrement y by 1, accumulate error for x steps."""
     end = f'cm_end_{slot}'
-    xeq = f'cm_xeq_{slot}'
-    yupd = f'cm_yupd_{slot}'
-    yeq = f'cm_yeq_{slot}'
-    donechk = f'cm_donechk_{slot}'
     notdone = f'cm_notdone_{slot}'
 
     a.ld_a_lbl(f'cm{slot}_active')
     a.or_r('a')
     a.jp('z', end)
 
-    a.ld_a_lbl(f'cm{slot}_x')
+    # Decrement Y (move up one pixel)
+    a.ld_a_lbl(f'cm{slot}_y')
+    a.dec_r('a')
+    a.ld_lbl_a(f'cm{slot}_y')
+
+    # Accumulate X error: err += dx
+    a.ld_a_lbl(f'cm{slot}_err')
     a.ld_r_r('b', 'a')
-    a.ld_a_lbl(f'cm{slot}_tx')
-    a.cp_r('b')
-    a.jp('z', xeq)
-    a.jp('c', f'cm_xdec_{slot}')
+    a.ld_a_lbl(f'cm{slot}_dx')
+    a.add_a_r('b')
+    a.ld_lbl_a(f'cm{slot}_err')
+
+    # If err >= dy, step X and subtract dy
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl(f'cm{slot}_dy')
+    a.cp_r('b')            # compare dy with err: carry if dy < err (i.e. err >= dy)
+    a.jp('nc', f'cm_nox_{slot}')  # if dy >= err, no X step
+    # Step X in the correct direction
+    a.ld_a_lbl(f'cm{slot}_sx')
+    a.or_r('a')
+    a.jp('z', f'cm_xleft_{slot}')
+    # sx=1: move right
     a.ld_a_lbl(f'cm{slot}_x')
     a.inc_r('a')
     a.ld_lbl_a(f'cm{slot}_x')
-    a.jp(yupd)
-    a.label(f'cm_xdec_{slot}')
+    a.jp(f'cm_xdone_{slot}')
+    a.label(f'cm_xleft_{slot}')
+    # sx=0: move left
     a.ld_a_lbl(f'cm{slot}_x')
     a.dec_r('a')
     a.ld_lbl_a(f'cm{slot}_x')
-    a.label(xeq)
-    a.label(yupd)
+    a.label(f'cm_xdone_{slot}')
+    # Subtract dy from err
+    a.ld_a_lbl(f'cm{slot}_err')
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl(f'cm{slot}_dy')
+    a.ld_r_r('c', 'a')
+    a.ld_r_r('a', 'b')
+    a.sub_r('c')
+    a.ld_lbl_a(f'cm{slot}_err')
+    a.label(f'cm_nox_{slot}')
 
+    # Check if reached target_y
     a.ld_a_lbl(f'cm{slot}_y')
     a.ld_r_r('b', 'a')
     a.ld_a_lbl(f'cm{slot}_ty')
     a.cp_r('b')
-    a.jp('z', yeq)
-    a.jp('c', f'cm_ydec_{slot}')
-    a.ld_a_lbl(f'cm{slot}_y')
-    a.inc_r('a')
-    a.ld_lbl_a(f'cm{slot}_y')
-    a.jp(donechk)
-    a.label(f'cm_ydec_{slot}')
-    a.ld_a_lbl(f'cm{slot}_y')
-    a.dec_r('a')
-    a.ld_lbl_a(f'cm{slot}_y')
-    a.label(yeq)
-    a.label(donechk)
-
-    a.ld_a_lbl(f'cm{slot}_x')
-    a.ld_r_r('b', 'a')
-    a.ld_a_lbl(f'cm{slot}_tx')
-    a.cp_r('b')
     a.jp('nz', notdone)
-    a.ld_a_lbl(f'cm{slot}_y')
-    a.ld_r_r('b', 'a')
-    a.ld_a_lbl(f'cm{slot}_ty')
-    a.cp_r('b')
-    a.jp('nz', notdone)
+    # Reached target — explode
     a.xor_r('a')
     a.ld_lbl_a(f'cm{slot}_active')
     a.ld_a_lbl(f'cm{slot}_tx')
@@ -953,6 +956,48 @@ for i in range(COUNTER_SLOTS):
     a.ld_lbl_a(f'cm{i}_tx')
     a.ld_a_lbl('cross_y')
     a.ld_lbl_a(f'cm{i}_ty')
+    # Guard: if target is at or below base, cancel launch
+    a.cp_n(BASE_Y)
+    a.jp('nc', f'lc_cancel_{i}')
+    # Compute dy = BASE_Y - ty (always positive, target above base)
+    a.ld_r_n('a', BASE_Y)
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl(f'cm{i}_ty')
+    a.ld_r_r('c', 'a')
+    a.ld_r_r('a', 'b')
+    a.sub_r('c')
+    a.jp('z', f'lc_cancel_{i}')  # dy=0, can't fire
+    a.ld_lbl_a(f'cm{i}_dy')
+    # Compute dx = abs(tx - BASE_X), sx = direction
+    a.ld_a_lbl(f'cm{i}_tx')
+    a.cp_n(BASE_X)
+    a.jp('nc', f'lc_right_{i}')
+    # tx < BASE_X: dx = BASE_X - tx, sx = 0 (left)
+    a.ld_r_r('b', 'a')
+    a.ld_r_n('a', BASE_X)
+    a.sub_r('b')
+    a.ld_lbl_a(f'cm{i}_dx')
+    a.xor_r('a')
+    a.ld_lbl_a(f'cm{i}_sx')
+    a.jp(f'lc_init_done_{i}')
+    a.label(f'lc_right_{i}')
+    # tx >= BASE_X: dx = tx - BASE_X, sx = 1 (right)
+    a.sub_n(BASE_X)
+    a.ld_lbl_a(f'cm{i}_dx')
+    a.ld_r_n('a', 1)
+    a.ld_lbl_a(f'cm{i}_sx')
+    a.label(f'lc_init_done_{i}')
+    # err = 0
+    a.xor_r('a')
+    a.ld_lbl_a(f'cm{i}_err')
+    a.ret()
+    a.label(f'lc_cancel_{i}')
+    # Cancel: deactivate and refund ammo
+    a.xor_r('a')
+    a.ld_lbl_a(f'cm{i}_active')
+    a.ld_a_lbl('ammo')
+    a.inc_r('a')
+    a.ld_lbl_a('ammo')
     a.ret()
     a.label(nxt)
 a.ret()
@@ -1326,6 +1371,10 @@ for i in range(COUNTER_SLOTS):
     a.label(f'cm{i}_y'); a.db(0)
     a.label(f'cm{i}_tx'); a.db(0)
     a.label(f'cm{i}_ty'); a.db(0)
+    a.label(f'cm{i}_dx'); a.db(0)
+    a.label(f'cm{i}_dy'); a.db(0)
+    a.label(f'cm{i}_sx'); a.db(0)
+    a.label(f'cm{i}_err'); a.db(0)
 
 for i in range(EXP_SLOTS):
     a.label(f'ex{i}_active'); a.db(0)
