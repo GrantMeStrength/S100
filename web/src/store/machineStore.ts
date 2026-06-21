@@ -406,6 +406,26 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     }),
   },
   {
+    // MISSILE — a Missile Command style game.
+    // Standalone Z80 binary. Uses Dazzler 64×64 color mode
+    // and D+7A joystick (port 0x18 buttons, port 0x19 X-axis, port 0x1A Y-axis).
+    // Joystick to aim crosshair, Button 2 = fire, Button 1 = exit to CP/M.
+    id: 'missile',
+    label: 'Missile Command — Dazzler Game',
+    binaryUrl: pub('/MISSILE.COM'),
+    binaryLoadAddr: 0x0100,
+    startupPc: 0x0100,
+    machine: JSON.stringify({
+      name: 'Missile Command (Dazzler)',
+      slots: [
+        { slot: 0, card: 'cpu_z80',  params: { speed_hz: 4_000_000 } },
+        { slot: 1, card: 'ram',      params: { base: 0, size: 65536 } },
+        { slot: 2, card: 'dazzler' },
+        { slot: 3, card: 'joystick', params: { base_port: 0x18, button_port: 0x42 } },
+      ],
+    }),
+  },
+  {
     // MITS Altair BASIC Rev. 4.0 (Eight-K Version) — copyright 1976 by MITS Inc.
     // ROM card holds BASIC at 0xC000. On Run, the toggle injects a copy loop at 0xFF00
     // that copies the 8 KB from ROM (0xC000) into RAM (0x0000), then jumps to 0x0000.
