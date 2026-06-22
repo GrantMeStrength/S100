@@ -338,7 +338,7 @@ def emit_home_slot(x, filled=False):
 
 a.label('start')
 a.di()
-a.ld_rp_nn('sp', 0x1F00)
+a.ld_rp_nn('sp', 0x3000)
 a.ld_r_n('a', 0x30)
 a.out_a(DAZ_CC)
 a.ld_r_n('a', 0x80 | FB_PAGE)

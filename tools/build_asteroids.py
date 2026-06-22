@@ -168,8 +168,8 @@ class Z80:
 
 # ─── Constants ──────────────────────────────────────────────────────────────────
 DAZ_NX, DAZ_CC = 0x0E, 0x0F
-FB_BASE = 0x2000
-FB_PAGE = 0x10
+FB_BASE = 0x4000
+FB_PAGE = 0x20
 FB_SIZE = 2048
 JOY_BTN, JOY_X, JOY_Y = 0x18, 0x19, 0x1A
 
@@ -184,26 +184,27 @@ DIR_DY = [-1, -1, 0, 1, 1, 1, 0, -1]
 BULLET_DX = [0, 2, 2, 2, 0, -2, -2, -2]
 BULLET_DY = [-2, -2, 0, 2, 2, 2, 0, -2]
 
-# Ship shapes: 8 directions, each a list of (dx,dy) offsets from center
-# Making a clear triangle/arrow shape, roughly 5×5
+# Ship shapes: 8 directions, each 7 points (dx,dy). Smaller but still visible triangle.
+# Tip + 2 mid + 4 base = 7 pixels per direction
 SHIP_SHAPES = [
-    # Dir 0 (N) - pointing up
-    [(0,-2), (-1,-1), (1,-1), (-2,1), (-1,1), (0,1), (1,1), (2,1), (0,0)],
-    # Dir 1 (NE) - pointing up-right
-    [(1,-2), (2,-1), (0,-1), (-1,0), (-2,1), (-1,1), (0,0), (1,0), (2,-2)],
-    # Dir 2 (E) - pointing right
-    [(2,0), (1,-1), (1,1), (-1,-2), (-1,-1), (-1,0), (-1,1), (-1,2), (0,0)],
-    # Dir 3 (SE) - pointing down-right
-    [(2,1), (1,2), (0,1), (-1,0), (-2,-1), (-1,-1), (0,0), (1,0), (2,2)],
-    # Dir 4 (S) - pointing down
-    [(0,2), (-1,1), (1,1), (-2,-1), (-1,-1), (0,-1), (1,-1), (2,-1), (0,0)],
-    # Dir 5 (SW) - pointing down-left
-    [(-1,2), (-2,1), (0,1), (1,0), (2,-1), (1,-1), (0,0), (-1,0), (-2,2)],
-    # Dir 6 (W) - pointing left
-    [(-2,0), (-1,-1), (-1,1), (1,-2), (1,-1), (1,0), (1,1), (1,2), (0,0)],
-    # Dir 7 (NW) - pointing up-left
-    [(-1,-2), (-2,-1), (0,-1), (1,0), (2,1), (1,1), (0,0), (-1,0), (-2,-2)],
+    # Dir 0 (N): tip at top
+    [(0,-2), (-1,-1), (1,-1), (-2,1), (-1,1), (0,1), (1,1)],
+    # Dir 1 (NE)
+    [(1,-2), (2,-1), (0,-1), (-1,0), (-2,1), (-1,1), (0,0)],
+    # Dir 2 (E): tip at right
+    [(2,0), (1,-1), (1,1), (-1,-2), (-1,-1), (-1,0), (-1,1)],
+    # Dir 3 (SE)
+    [(2,1), (1,2), (1,0), (0,-1), (-1,-2), (-1,-1), (0,0)],
+    # Dir 4 (S): tip at bottom
+    [(0,2), (-1,1), (1,1), (-2,-1), (-1,-1), (0,-1), (1,-1)],
+    # Dir 5 (SW)
+    [(-1,2), (-2,1), (0,1), (1,0), (2,-1), (1,-1), (0,0)],
+    # Dir 6 (W): tip at left
+    [(-2,0), (-1,-1), (-1,1), (1,-2), (1,-1), (1,0), (1,1)],
+    # Dir 7 (NW)
+    [(-2,-1), (-1,-2), (-1,0), (0,1), (1,2), (1,1), (0,0)],
 ]
+NUM_SHIP_POINTS = 7
 
 AST_LARGE_POINTS = [
     (-1, -2), (0, -2), (1, -2),
@@ -266,8 +267,10 @@ def emit_plot_from_de(dx, dy):
     a.ld_r_r('d', 'a')
     a.ld_r_r('a', 'e')
     if dy:
+        a.push('de')  # save D (new x) before add_wrap clobbers it
         a.ld_r_n('b', s8(dy))
         a.call('add_wrap')
+        a.pop('de')   # restore D (new x)
     a.ld_r_r('e', 'a')
     a.call('plot')
     a.pop('de')
@@ -279,23 +282,24 @@ def emit_offsets_shape(points):
 
 
 def emit_ship_routine(name, x_lbl, y_lbl, dir_lbl, color):
+    """Draw/erase ship: loads position, sets color, branches per direction to inline points."""
     a.label(name)
     a.ld_r_n('c', color)
     a.ld_a_lbl(dir_lbl)
-    # Branch to the correct direction's draw code
+    # Just use direction as index into 8 blocks.
+    # But to save code, use a smaller ship (7 points) and inline them.
+    # Each emit_plot_from_de is ~12 bytes, so 7*12 = 84 bytes per direction,
+    # 8 directions = 672 bytes. Two routines = 1344 bytes. Acceptable.
     for d in range(8):
-        nxt = f'{name}_d{d+1}' if d < 7 else f'{name}_done'
         a.cp_n(d)
         a.jp('z', f'{name}_dir{d}')
-    a.jp(f'{name}_done')
+    a.ret()
     for d in range(8):
         a.label(f'{name}_dir{d}')
         load_coord_pair(x_lbl, y_lbl)
         for dx, dy in SHIP_SHAPES[d]:
             emit_plot_from_de(dx, dy)
-        a.jp(f'{name}_done')
-    a.label(f'{name}_done')
-    a.ret()
+        a.ret()
 
 
 def emit_spawn_bullet(slot):
@@ -340,7 +344,7 @@ def emit_asteroid_hit_check(point_x_reg, point_y_reg, slot, miss_label):
 # ─── Entry ─────────────────────────────────────────────────────────────────────
 a.label('start')
 a.di()
-a.ld_rp_nn('sp', 0x1F00)
+a.ld_rp_nn('sp', 0x3F00)
 
 a.ld_r_n('a', 0x30)
 a.out_a(DAZ_CC)
