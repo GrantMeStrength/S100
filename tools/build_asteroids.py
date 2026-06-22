@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ASTEROIDS — An Asteroids-style game for the Cromemco Dazzler + D+7A joystick.
+ASTEROIDS — A simple Asteroids-style game for the Cromemco Dazzler + D+7A joystick.
 Builds a CP/M .COM file (Z80 machine code, ORG 0x0100).
 
 Display: 64×64 color, 2K normal mode (16 IBGR colors)
@@ -176,66 +176,38 @@ JOY_BTN, JOY_X, JOY_Y = 0x18, 0x19, 0x1A
 BLACK, RED, GREEN, YELLOW = 0, 1, 2, 3
 BLUE, MAGENTA, CYAN, WHITE = 4, 5, 6, 7
 BRIGHT = 8
-BRIGHT_YELLOW = YELLOW | BRIGHT
+BRIGHT_CYAN = CYAN | BRIGHT
 BRIGHT_WHITE = WHITE | BRIGHT
 
-DIR_VECS = [
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
+DIR_DX = [0, 1, 1, 1, 0, -1, -1, -1]
+DIR_DY = [-1, -1, 0, 1, 1, 1, 0, -1]
+BULLET_DX = [0, 2, 2, 2, 0, -2, -2, -2]
+BULLET_DY = [-2, -2, 0, 2, 2, 2, 0, -2]
+
+SHIP_OFF1_DX = [-1, -1, -1, 0, -1, 0, 1, 1]
+SHIP_OFF1_DY = [1, 0, -1, -1, -1, -1, -1, 0]
+SHIP_OFF2_DX = [1, 0, -1, -1, 1, 1, 1, 0]
+SHIP_OFF2_DY = [1, 1, 1, 0, -1, 0, 1, 1]
+
+AST_LARGE_POINTS = [
+    (-1, -2), (0, -2), (1, -2),
+    (-2, -1), (2, -1),
+    (-2, 0), (2, 0),
+    (-2, 1), (2, 1),
+    (-1, 2), (0, 2), (1, 2),
+]
+AST_MED_POINTS = [
+    (-1, -1), (0, -1), (1, -1),
+    (-1, 0), (1, 0),
+    (-1, 1), (0, 1), (1, 1),
 ]
 
-SHIP_PIXELS = {
-    0: [(0, 0), (-1, 1), (1, 1)],
-    1: [(0, 0), (-1, 0)],
-    2: [(0, 0), (-1, -1), (-1, 1)],
-    3: [(0, 0), (0, -1)],
-    4: [(0, 0), (-1, -1), (1, -1)],
-    5: [(0, 0), (1, 0)],
-    6: [(0, 0), (1, -1), (1, 1)],
-    7: [(0, 0), (0, 1)],
-}
-
-FLAME_PIXELS = {
-    0: [(0, 2)],
-    1: [(-1, 1)],
-    2: [(-2, 0)],
-    3: [(-1, -1)],
-    4: [(0, -2)],
-    5: [(1, -1)],
-    6: [(2, 0)],
-    7: [(1, 1)],
-}
-
-AST_STARTS = [
+INIT_ASTEROIDS = [
     (8, 8, 1, 1),
-    (55, 10, -1, 1),
-    (10, 52, 1, -1),
-    (54, 54, -1, -1),
-    (24, 12, 1, 1),
-    (40, 20, -1, 1),
-    (18, 36, 1, -1),
-    (46, 44, -1, -1),
-    (30, 8, 1, 1),
-    (52, 30, -1, 1),
-    (12, 26, 1, -1),
-    (34, 50, -1, -1),
+    (55, 8, -1, 1),
+    (8, 55, 1, -1),
+    (55, 55, -1, -1),
 ]
-
-AST_LARGE = [(0, -2), (-1, -1), (1, -1), (-2, 0), (2, 0), (-1, 1), (1, 1), (0, 2)]
-AST_MED = [(0, -1), (-1, 0), (1, 0), (0, 1)]
-EXPLOSION_POINTS = [
-    (0, 0, BRIGHT_YELLOW),
-    (1, 0, RED),
-]
-
-BULLET_SLOTS = 3
-AST_SLOTS = 12
 
 a = Z80()
 
@@ -244,12 +216,16 @@ def s8(v):
     return v & 0xFF
 
 
-def set_a(val):
-    a.ld_r_n('a', val & 0xFF)
+def bullet_lbl(i, field):
+    return f'bullet{i}_{field}'
+
+
+def ast_lbl(i, field):
+    return f'ast{i}_{field}'
 
 
 def store_imm(lbl, val):
-    set_a(val)
+    a.ld_r_n('a', val & 0xFF)
     a.ld_lbl_a(lbl)
 
 
@@ -258,610 +234,779 @@ def copy_lbl(src, dst):
     a.ld_lbl_a(dst)
 
 
-def emit_plot_rel(base_x_lbl, base_y_lbl, dx, dy, color):
-    a.ld_a_lbl(base_x_lbl)
-    if dx:
-        a.add_a_n(s8(dx))
-    a.and_n(0x3F)
-    a.ld_r_r('d', 'a')
-    a.ld_a_lbl(base_y_lbl)
-    if dy:
-        a.add_a_n(s8(dy))
-    a.and_n(0x3F)
-    a.ld_r_r('e', 'a')
-    a.ld_r_n('c', color)
-    a.call('plot')
-
-
-def emit_dir_branch(branch_label, dir_lbl, per_dir):
-    a.label(branch_label)
-    a.ld_a_lbl(dir_lbl)
-    for idx in range(8):
-        nxt = f'{branch_label}_next_{idx}'
-        a.cp_n(idx)
-        a.jp('nz', nxt)
-        per_dir(idx)
-        a.ret()
-        a.label(nxt)
-    a.ret()
-
-
-def emit_var_inc_vel(lbl):
-    a.ld_a_lbl(lbl)
-    a.call('inc_vel')
-    a.ld_lbl_a(lbl)
-
-
-def emit_var_dec_vel(lbl):
-    a.ld_a_lbl(lbl)
-    a.call('dec_vel')
-    a.ld_lbl_a(lbl)
-
-
-def emit_var_friction(lbl):
-    a.ld_a_lbl(lbl)
-    a.call('friction_vel')
-    a.ld_lbl_a(lbl)
-
-
-def emit_plot_var(x_lbl, y_lbl, color):
+def load_coord_pair(x_lbl, y_lbl):
     a.ld_a_lbl(x_lbl)
     a.ld_r_r('d', 'a')
     a.ld_a_lbl(y_lbl)
     a.ld_r_r('e', 'a')
+
+
+def emit_plot_from_de(dx, dy):
+    a.push('de')
+    a.ld_r_r('a', 'd')
+    if dx:
+        a.ld_r_n('b', s8(dx))
+        a.call('add_wrap')
+    a.ld_r_r('d', 'a')
+    a.ld_r_r('a', 'e')
+    if dy:
+        a.ld_r_n('b', s8(dy))
+        a.call('add_wrap')
+    a.ld_r_r('e', 'a')
+    a.call('plot')
+    a.pop('de')
+
+
+def emit_offsets_shape(points):
+    for dx, dy in points:
+        emit_plot_from_de(dx, dy)
+
+
+def emit_ship_routine(name, x_lbl, y_lbl, dir_lbl, color):
+    a.label(name)
+    load_coord_pair(x_lbl, y_lbl)
     a.ld_r_n('c', color)
     a.call('plot')
 
+    load_coord_pair(x_lbl, y_lbl)
+    a.ld_a_lbl(dir_lbl)
+    a.ld_rp_label('hl', 'ship_off1_dx_table')
+    a.call('table_lookup_a')
+    a.ld_r_n('b', 0)
+    a.ld_r_r('b', 'a')
+    a.ld_r_r('a', 'd')
+    a.call('add_wrap')
+    a.ld_r_r('d', 'a')
+    a.ld_a_lbl(dir_lbl)
+    a.ld_rp_label('hl', 'ship_off1_dy_table')
+    a.call('table_lookup_a')
+    a.ld_r_n('b', 0)
+    a.ld_r_r('b', 'a')
+    a.ld_r_r('a', 'e')
+    a.call('add_wrap')
+    a.ld_r_r('e', 'a')
+    a.ld_r_n('c', color)
+    a.call('plot')
 
-def asteroid_prefix(i):
-    return f'ast{i}'
+    load_coord_pair(x_lbl, y_lbl)
+    a.ld_a_lbl(dir_lbl)
+    a.ld_rp_label('hl', 'ship_off2_dx_table')
+    a.call('table_lookup_a')
+    a.ld_r_n('b', 0)
+    a.ld_r_r('b', 'a')
+    a.ld_r_r('a', 'd')
+    a.call('add_wrap')
+    a.ld_r_r('d', 'a')
+    a.ld_a_lbl(dir_lbl)
+    a.ld_rp_label('hl', 'ship_off2_dy_table')
+    a.call('table_lookup_a')
+    a.ld_r_n('b', 0)
+    a.ld_r_r('b', 'a')
+    a.ld_r_r('a', 'e')
+    a.call('add_wrap')
+    a.ld_r_r('e', 'a')
+    a.ld_r_n('c', color)
+    a.call('plot')
+    a.ret()
 
 
-def bullet_prefix(i):
-    return f'bul{i}'
+def emit_spawn_bullet(slot):
+    done = f'spawn_bullet{slot}_done'
+    store_imm(bullet_lbl(slot, 'active'), 1)
+    store_imm(bullet_lbl(slot, 'life'), 16)
+    copy_lbl('ship_x', bullet_lbl(slot, 'x'))
+    copy_lbl('ship_y', bullet_lbl(slot, 'y'))
+    copy_lbl('ship_x', bullet_lbl(slot, 'old_x'))
+    copy_lbl('ship_y', bullet_lbl(slot, 'old_y'))
+    a.ld_a_lbl('ship_dir')
+    a.ld_rp_label('hl', 'bullet_dx_table')
+    a.call('table_lookup_a')
+    a.ld_lbl_a(bullet_lbl(slot, 'dx'))
+    a.ld_a_lbl('ship_dir')
+    a.ld_rp_label('hl', 'bullet_dy_table')
+    a.call('table_lookup_a')
+    a.ld_lbl_a(bullet_lbl(slot, 'dy'))
+    a.jp(done)
+    a.label(done)
+
+
+def emit_asteroid_hit_check(point_x_reg, point_y_reg, slot, miss_label):
+    a.ld_a_lbl(ast_lbl(slot, 'active'))
+    a.or_r('a')
+    a.jp('z', miss_label)
+    a.ld_a_lbl(ast_lbl(slot, 'size'))
+    a.inc_r('a')
+    a.ld_r_r('c', 'a')
+    a.ld_a_lbl(ast_lbl(slot, 'x'))
+    a.ld_r_r('b', 'a')
+    a.ld_r_r('a', point_x_reg)
+    a.call('absdiff_within')
+    a.jp('nc', miss_label)
+    a.ld_a_lbl(ast_lbl(slot, 'y'))
+    a.ld_r_r('b', 'a')
+    a.ld_r_r('a', point_y_reg)
+    a.call('absdiff_within')
+    a.jp('nc', miss_label)
 
 
 # ─── Entry ─────────────────────────────────────────────────────────────────────
 a.label('start')
 a.di()
 a.ld_rp_nn('sp', 0x1F00)
+
 a.ld_r_n('a', 0x30)
 a.out_a(DAZ_CC)
 a.ld_r_n('a', 0x80 | FB_PAGE)
 a.out_a(DAZ_NX)
-a.call('clear_fb')
+
+a.in_a(DAZ_NX)
+a.ld_lbl_a('rng')
+
 a.call('init_game')
 
 a.label('main_loop')
 a.call('vsync')
-a.call('clear_fb')
-a.call('update_frame')
-a.call('handle_input')
+a.call('erase_ship')
+a.call('erase_bullets')
+a.call('erase_asteroids')
+a.call('read_input')
 a.call('update_ship')
+a.call('spawn_bullet_if_requested')
 a.call('move_bullets')
 a.call('move_asteroids')
-a.call('handle_collisions')
-a.call('post_collision')
-a.call('draw_scene')
+a.call('check_bullet_collisions')
+a.call('check_ship_collision')
+a.call('check_wave_clear')
+a.call('draw_asteroids')
+a.call('draw_ship')
+a.call('draw_bullets')
 a.jp('main_loop')
 
-# ─── Game init / frame state ───────────────────────────────────────────────────
+# ─── Game setup ────────────────────────────────────────────────────────────────
 a.label('init_game')
+a.call('clear_fb')
 store_imm('lives', 3)
-store_imm('score', 0)
-store_imm('wave_count', 4)
-store_imm('frame', 0)
-store_imm('frame3', 0)
-store_imm('invuln', 0)
-store_imm('explosion_timer', 0)
-store_imm('thrust_flag', 0)
-store_imm('active_count', 0)
-for i in range(BULLET_SLOTS):
-    store_imm(f'bul{i}_active', 0)
-for i in range(AST_SLOTS):
-    store_imm(f'ast{i}_active', 0)
-a.call('respawn_ship')
-a.call('spawn_wave')
+store_imm('frame_counter', 0)
+store_imm('fire_lock', 0)
+store_imm('fire_request', 0)
+a.call('clear_bullets')
+a.call('reset_ship')
+a.call('init_wave')
 a.ret()
 
-a.label('respawn_ship')
+a.label('reset_ship')
 store_imm('ship_x', 32)
 store_imm('ship_y', 32)
+store_imm('ship_old_x', 32)
+store_imm('ship_old_y', 32)
 store_imm('ship_dir', 0)
+store_imm('ship_old_dir', 0)
 store_imm('ship_vx', 0)
 store_imm('ship_vy', 0)
-store_imm('invuln', 60)
-store_imm('explosion_timer', 0)
-store_imm('thrust_flag', 0)
-copy_lbl('ship_x', 'exp_x')
-copy_lbl('ship_y', 'exp_y')
 a.ret()
 
-a.label('update_frame')
-a.ld_a_lbl('frame')
-a.inc_r('a')
-a.ld_lbl_a('frame')
-a.ld_a_lbl('frame3')
-a.inc_r('a')
-a.cp_n(3)
-a.jp('c', 'uf_store')
-a.xor_r('a')
-a.label('uf_store')
-a.ld_lbl_a('frame3')
-a.xor_r('a')
-a.ld_lbl_a('thrust_flag')
+a.label('clear_bullets')
+for i in range(2):
+    store_imm(bullet_lbl(i, 'active'), 0)
+    store_imm(bullet_lbl(i, 'life'), 0)
+    store_imm(bullet_lbl(i, 'x'), 0)
+    store_imm(bullet_lbl(i, 'y'), 0)
+    store_imm(bullet_lbl(i, 'old_x'), 0)
+    store_imm(bullet_lbl(i, 'old_y'), 0)
 a.ret()
 
-# ─── Input ──────────────────────────────────────────────────────────────────────
-a.label('handle_input')
-a.in_a(JOY_BTN)
-a.ld_lbl_a('btn_state')
-a.bit(0, 'a')
-a.jp('z', 'exit_to_cpm')
-a.ld_a_lbl('explosion_timer')
-a.or_r('a')
-a.jp('nz', 'hi_done')
+a.label('init_wave')
+for i in range(8):
+    if i < len(INIT_ASTEROIDS):
+        x, y, dx, dy = INIT_ASTEROIDS[i]
+        store_imm(ast_lbl(i, 'active'), 1)
+        store_imm(ast_lbl(i, 'x'), x)
+        store_imm(ast_lbl(i, 'y'), y)
+        store_imm(ast_lbl(i, 'old_x'), x)
+        store_imm(ast_lbl(i, 'old_y'), y)
+        store_imm(ast_lbl(i, 'dx'), s8(dx))
+        store_imm(ast_lbl(i, 'dy'), s8(dy))
+        store_imm(ast_lbl(i, 'size'), 2)
+        store_imm(ast_lbl(i, 'timer'), 0)
+    else:
+        store_imm(ast_lbl(i, 'active'), 0)
+        store_imm(ast_lbl(i, 'x'), 0)
+        store_imm(ast_lbl(i, 'y'), 0)
+        store_imm(ast_lbl(i, 'old_x'), 0)
+        store_imm(ast_lbl(i, 'old_y'), 0)
+        store_imm(ast_lbl(i, 'dx'), 0)
+        store_imm(ast_lbl(i, 'dy'), 0)
+        store_imm(ast_lbl(i, 'size'), 0)
+        store_imm(ast_lbl(i, 'timer'), 0)
+a.ret()
+
+# ─── Input / ship ──────────────────────────────────────────────────────────────
+a.label('read_input')
 a.in_a(JOY_X)
+a.ld_lbl_a('in_x')
+a.in_a(JOY_Y)
+a.ld_lbl_a('in_y')
+a.in_a(JOY_BTN)
+a.ld_lbl_a('in_btn')
+
+a.ld_a_lbl('in_btn')
+a.bit(0, 'a')
+a.call('z', 'exit_to_cpm')
+
+a.ld_a_lbl('in_btn')
+a.bit(1, 'a')
+a.jp('nz', 'ri_release')
+a.ld_a_lbl('fire_lock')
 a.or_r('a')
-a.jp('z', 'hi_y')
+a.jp('nz', 'ri_done')
+store_imm('fire_lock', 1)
+store_imm('fire_request', 1)
+a.jp('ri_done')
+
+a.label('ri_release')
+store_imm('fire_lock', 0)
+
+a.label('ri_done')
+a.ret()
+
+a.label('update_ship')
+a.ld_a_lbl('in_x')
+a.or_r('a')
+a.jp('z', 'us_thrust')
 a.cp_n(128)
-a.jp('c', 'rot_right')
+a.jp('nc', 'us_left')
+a.ld_a_lbl('ship_dir')
+a.inc_r('a')
+a.and_n(7)
+a.ld_lbl_a('ship_dir')
+a.jp('us_thrust')
+
+a.label('us_left')
 a.ld_a_lbl('ship_dir')
 a.dec_r('a')
 a.and_n(7)
 a.ld_lbl_a('ship_dir')
-a.jp('hi_y')
-a.label('rot_right')
-a.ld_a_lbl('ship_dir')
-a.inc_r('a')
-a.and_n(7)
-a.ld_lbl_a('ship_dir')
-a.label('hi_y')
-a.in_a(JOY_Y)
+
+a.label('us_thrust')
+a.ld_a_lbl('in_y')
 a.or_r('a')
-a.jp('z', 'hi_fire')
+a.jp('z', 'us_frame')
 a.cp_n(128)
-a.jp('nc', 'hi_fire')
-store_imm('thrust_flag', 1)
-a.call('apply_thrust')
-a.label('hi_fire')
-a.ld_a_lbl('btn_state')
-a.bit(1, 'a')
-a.jp('nz', 'hi_done')
-a.call('fire_bullet')
-a.label('hi_done')
-a.ret()
+a.jp('nc', 'us_frame')
+a.ld_a_lbl('ship_dir')
+a.ld_rp_label('hl', 'dir_dx_table')
+a.call('table_lookup_a')
+a.ld_r_r('b', 'a')
+a.ld_rp_label('hl', 'ship_vx')
+a.call('apply_thrust_component_hl')
+a.ld_a_lbl('ship_dir')
+a.ld_rp_label('hl', 'dir_dy_table')
+a.call('table_lookup_a')
+a.ld_r_r('b', 'a')
+a.ld_rp_label('hl', 'ship_vy')
+a.call('apply_thrust_component_hl')
 
-# ─── Ship physics ───────────────────────────────────────────────────────────────
-emit_dir_branch('apply_thrust', 'ship_dir', lambda idx: (
-    emit_var_inc_vel('ship_vx') if DIR_VECS[idx][0] > 0 else emit_var_dec_vel('ship_vx') if DIR_VECS[idx][0] < 0 else None,
-    emit_var_inc_vel('ship_vy') if DIR_VECS[idx][1] > 0 else emit_var_dec_vel('ship_vy') if DIR_VECS[idx][1] < 0 else None,
-))
+a.label('us_frame')
+a.ld_a_lbl('frame_counter')
+a.inc_r('a')
+a.ld_lbl_a('frame_counter')
+a.and_n(3)
+a.jp('nz', 'us_move')
+a.ld_rp_label('hl', 'ship_vx')
+a.call('apply_friction_hl')
+a.ld_rp_label('hl', 'ship_vy')
+a.call('apply_friction_hl')
 
-a.label('update_ship')
-a.ld_a_lbl('explosion_timer')
-a.or_r('a')
-a.ret_cc('nz')
+a.label('us_move')
+a.ld_a_lbl('ship_x')
+a.ld_r_r('b', 'a')
 a.ld_a_lbl('ship_vx')
 a.ld_r_r('b', 'a')
 a.ld_a_lbl('ship_x')
-a.call('add_a_b_wrap')
+a.call('add_wrap')
 a.ld_lbl_a('ship_x')
+a.ld_a_lbl('ship_y')
+a.ld_r_r('b', 'a')
 a.ld_a_lbl('ship_vy')
 a.ld_r_r('b', 'a')
 a.ld_a_lbl('ship_y')
-a.call('add_a_b_wrap')
+a.call('add_wrap')
 a.ld_lbl_a('ship_y')
-a.ld_a_lbl('frame')
-a.and_n(0x0F)
-a.jp('nz', 'us_done')
-emit_var_friction('ship_vx')
-emit_var_friction('ship_vy')
-a.label('us_done')
 a.ret()
 
-a.label('add_a_b_wrap')
-a.add_a_r('b')
-a.and_n(0x3F)
-a.ret()
-
-a.label('inc_vel')
-a.cp_n(3)
-a.ret_cc('z')
-a.inc_r('a')
-a.ret()
-
-a.label('dec_vel')
-a.cp_n(0xFD)
-a.ret_cc('z')
-a.dec_r('a')
-a.ret()
-
-a.label('friction_vel')
+a.label('spawn_bullet_if_requested')
+a.ld_a_lbl('fire_request')
 a.or_r('a')
 a.ret_cc('z')
-a.cp_n(0x80)
-a.jp('c', 'fv_pos')
-a.inc_r('a')
-a.ret()
-a.label('fv_pos')
-a.dec_r('a')
-a.ret()
-
-# ─── Bullet handling ────────────────────────────────────────────────────────────
-emit_dir_branch('set_tmp_dir_from_ship', 'ship_dir', lambda idx: (
-    store_imm('tmp_dx', DIR_VECS[idx][0]),
-    store_imm('tmp_dy', DIR_VECS[idx][1]),
-))
-
-a.label('fire_bullet')
-a.call('set_tmp_dir_from_ship')
-for i in range(BULLET_SLOTS):
-    nxt = f'fire_bullet_next_{i}'
-    a.ld_a_lbl(f'bul{i}_active')
+store_imm('fire_request', 0)
+for i in range(2):
+    nxt = f'sbir_next_{i}'
+    a.ld_a_lbl(bullet_lbl(i, 'active'))
     a.or_r('a')
     a.jp('nz', nxt)
-    store_imm(f'bul{i}_active', 1)
-    copy_lbl('ship_x', f'bul{i}_x')
-    copy_lbl('ship_y', f'bul{i}_y')
-    copy_lbl('tmp_dx', f'bul{i}_dx')
-    copy_lbl('tmp_dy', f'bul{i}_dy')
-    store_imm(f'bul{i}_life', 20)
+    store_imm(bullet_lbl(i, 'active'), 1)
+    store_imm(bullet_lbl(i, 'life'), 16)
+    copy_lbl('ship_x', bullet_lbl(i, 'x'))
+    copy_lbl('ship_y', bullet_lbl(i, 'y'))
+    copy_lbl('ship_x', bullet_lbl(i, 'old_x'))
+    copy_lbl('ship_y', bullet_lbl(i, 'old_y'))
+    a.ld_a_lbl('ship_dir')
+    a.ld_rp_label('hl', 'bullet_dx_table')
+    a.call('table_lookup_a')
+    a.ld_lbl_a(bullet_lbl(i, 'dx'))
+    a.ld_a_lbl('ship_dir')
+    a.ld_rp_label('hl', 'bullet_dy_table')
+    a.call('table_lookup_a')
+    a.ld_lbl_a(bullet_lbl(i, 'dy'))
     a.ret()
     a.label(nxt)
+a.ret()
+
+# ─── Bullets ───────────────────────────────────────────────────────────────────
+a.label('erase_bullets')
+for i in range(2):
+    skip = f'eb_skip_{i}'
+    a.ld_a_lbl(bullet_lbl(i, 'active'))
+    a.or_r('a')
+    a.jp('z', skip)
+    load_coord_pair(bullet_lbl(i, 'old_x'), bullet_lbl(i, 'old_y'))
+    a.ld_r_n('c', BLACK)
+    a.call('plot')
+    a.label(skip)
+a.ret()
+
+a.label('draw_bullets')
+for i in range(2):
+    skip = f'db_skip_{i}'
+    a.ld_a_lbl(bullet_lbl(i, 'active'))
+    a.or_r('a')
+    a.jp('z', skip)
+    load_coord_pair(bullet_lbl(i, 'x'), bullet_lbl(i, 'y'))
+    a.ld_r_n('c', BRIGHT_CYAN)
+    a.call('plot')
+    copy_lbl(bullet_lbl(i, 'x'), bullet_lbl(i, 'old_x'))
+    copy_lbl(bullet_lbl(i, 'y'), bullet_lbl(i, 'old_y'))
+    a.label(skip)
 a.ret()
 
 a.label('move_bullets')
-for i in range(BULLET_SLOTS):
-    p = bullet_prefix(i)
+for i in range(2):
     skip = f'mb_skip_{i}'
     dead = f'mb_dead_{i}'
-    a.ld_a_lbl(f'{p}_active')
+    a.ld_a_lbl(bullet_lbl(i, 'active'))
     a.or_r('a')
     a.jp('z', skip)
-    a.ld_a_lbl(f'{p}_life')
+    a.ld_a_lbl(bullet_lbl(i, 'x'))
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl(bullet_lbl(i, 'dx'))
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl(bullet_lbl(i, 'x'))
+    a.call('add_wrap')
+    a.ld_lbl_a(bullet_lbl(i, 'x'))
+    a.ld_a_lbl(bullet_lbl(i, 'y'))
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl(bullet_lbl(i, 'dy'))
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl(bullet_lbl(i, 'y'))
+    a.call('add_wrap')
+    a.ld_lbl_a(bullet_lbl(i, 'y'))
+    a.ld_a_lbl(bullet_lbl(i, 'life'))
     a.dec_r('a')
-    a.ld_lbl_a(f'{p}_life')
+    a.ld_lbl_a(bullet_lbl(i, 'life'))
     a.jp('z', dead)
-    for _ in range(2):
-        a.ld_a_lbl(f'{p}_dx')
-        a.ld_r_r('b', 'a')
-        a.ld_a_lbl(f'{p}_x')
-        a.call('add_a_b_wrap')
-        a.ld_lbl_a(f'{p}_x')
-        a.ld_a_lbl(f'{p}_dy')
-        a.ld_r_r('b', 'a')
-        a.ld_a_lbl(f'{p}_y')
-        a.call('add_a_b_wrap')
-        a.ld_lbl_a(f'{p}_y')
     a.jp(skip)
     a.label(dead)
-    store_imm(f'{p}_active', 0)
+    store_imm(bullet_lbl(i, 'active'), 0)
     a.label(skip)
 a.ret()
 
-# ─── Asteroid handling ──────────────────────────────────────────────────────────
-a.label('spawn_child_from_temp')
-for i in range(AST_SLOTS):
-    nxt = f'spawn_child_next_{i}'
-    a.ld_a_lbl(f'ast{i}_active')
+# ─── Asteroids ─────────────────────────────────────────────────────────────────
+a.label('erase_asteroids')
+for i in range(8):
+    skip = f'ea_skip_{i}'
+    a.ld_a_lbl(ast_lbl(i, 'active'))
     a.or_r('a')
-    a.jp('nz', nxt)
-    store_imm(f'ast{i}_active', 1)
-    copy_lbl('tmp_x', f'ast{i}_x')
-    copy_lbl('tmp_y', f'ast{i}_y')
-    copy_lbl('tmp_dx', f'ast{i}_dx')
-    copy_lbl('tmp_dy', f'ast{i}_dy')
-    copy_lbl('tmp_size', f'ast{i}_size')
-    a.ret()
-    a.label(nxt)
-a.ret()
-
-a.label('spawn_wave')
-for i in range(BULLET_SLOTS):
-    store_imm(f'bul{i}_active', 0)
-for i, (x, y, dx, dy) in enumerate(AST_STARTS):
-    skip = f'sw_skip_{i}'
-    a.ld_a_lbl('wave_count')
-    a.cp_n(i + 1)
-    a.jp('c', skip)
-    store_imm(f'ast{i}_active', 1)
-    store_imm(f'ast{i}_x', x)
-    store_imm(f'ast{i}_y', y)
-    store_imm(f'ast{i}_dx', dx)
-    store_imm(f'ast{i}_dy', dy)
-    store_imm(f'ast{i}_size', 2)
-    a.jp(f'sw_done_{i}')
+    a.jp('z', skip)
+    load_coord_pair(ast_lbl(i, 'old_x'), ast_lbl(i, 'old_y'))
+    a.ld_a_lbl(ast_lbl(i, 'size'))
+    a.ld_r_r('b', 'a')
+    a.ld_r_n('c', BLACK)
+    a.call('draw_asteroid_shape')
     a.label(skip)
-    store_imm(f'ast{i}_active', 0)
-    a.label(f'sw_done_{i}')
 a.ret()
 
-for i in range(AST_SLOTS):
-    p = asteroid_prefix(i)
-    a.label(f'destroy_{p}')
-    a.ld_a_lbl('score')
-    a.inc_r('a')
-    a.ld_lbl_a('score')
-    a.ld_a_lbl(f'{p}_size')
+a.label('draw_asteroids')
+for i in range(8):
+    skip = f'da_skip_{i}'
+    color_done = f'da_color_done_{i}'
+    a.ld_a_lbl(ast_lbl(i, 'active'))
     a.or_r('a')
-    a.jp('z', f'destroy_{p}_small')
-    a.dec_r('a')
-    a.ld_lbl_a('tmp_size')
-    copy_lbl(f'{p}_x', 'tmp_x')
-    copy_lbl(f'{p}_y', 'tmp_y')
-    copy_lbl(f'{p}_dx', 'tmp_dx')
-    copy_lbl(f'{p}_dy', 'tmp_dy')
-    copy_lbl('tmp_size', f'{p}_size')
-    a.ld_a_lbl(f'{p}_dy')
-    a.neg()
-    a.ld_lbl_a(f'{p}_dy')
-    a.ld_a_lbl('tmp_dx')
-    a.neg()
-    a.ld_lbl_a('tmp_dx')
-    a.call('spawn_child_from_temp')
-    a.ret()
-    a.label(f'destroy_{p}_small')
-    store_imm(f'{p}_active', 0)
-    a.ret()
+    a.jp('z', skip)
+    load_coord_pair(ast_lbl(i, 'x'), ast_lbl(i, 'y'))
+    a.ld_a_lbl(ast_lbl(i, 'size'))
+    a.ld_r_r('b', 'a')
+    a.cp_n(2)
+    a.jp('z', f'da_large_{i}')
+    a.cp_n(1)
+    a.jp('z', f'da_medium_{i}')
+    a.ld_r_n('c', BRIGHT_CYAN)
+    a.jp(color_done)
+    a.label(f'da_medium_{i}')
+    a.ld_r_n('c', CYAN)
+    a.jp(color_done)
+    a.label(f'da_large_{i}')
+    a.ld_r_n('c', WHITE)
+    a.label(color_done)
+    a.call('draw_asteroid_shape')
+    copy_lbl(ast_lbl(i, 'x'), ast_lbl(i, 'old_x'))
+    copy_lbl(ast_lbl(i, 'y'), ast_lbl(i, 'old_y'))
+    a.label(skip)
+a.ret()
 
 a.label('move_asteroids')
-for i in range(AST_SLOTS):
-    p = asteroid_prefix(i)
+for i in range(8):
     skip = f'ma_skip_{i}'
-    do_move = f'ma_do_{i}'
-    a.ld_a_lbl(f'{p}_active')
+    move = f'ma_move_{i}'
+    a.ld_a_lbl(ast_lbl(i, 'active'))
     a.or_r('a')
     a.jp('z', skip)
-    a.ld_a_lbl(f'{p}_size')
+    a.ld_a_lbl(ast_lbl(i, 'timer'))
     a.or_r('a')
-    a.jp('z', f'ma_small_{i}')
-    a.cp_n(1)
-    a.jp('z', f'ma_med_{i}')
-    a.ld_a_lbl('frame')
-    a.and_n(3)
-    a.jp('z', do_move)
+    a.jp('z', move)
+    a.dec_r('a')
+    a.ld_lbl_a(ast_lbl(i, 'timer'))
     a.jp(skip)
-    a.label(f'ma_med_{i}')
-    a.ld_a_lbl('frame3')
-    a.or_r('a')
-    a.jp('z', do_move)
-    a.jp(skip)
-    a.label(f'ma_small_{i}')
-    a.ld_a_lbl('frame')
-    a.and_n(1)
-    a.jp('z', do_move)
-    a.jp(skip)
-    a.label(do_move)
-    a.ld_a_lbl(f'{p}_dx')
+    a.label(move)
+    a.ld_a_lbl(ast_lbl(i, 'x'))
     a.ld_r_r('b', 'a')
-    a.ld_a_lbl(f'{p}_x')
-    a.call('add_a_b_wrap')
-    a.ld_lbl_a(f'{p}_x')
-    a.ld_a_lbl(f'{p}_dy')
+    a.ld_a_lbl(ast_lbl(i, 'dx'))
     a.ld_r_r('b', 'a')
-    a.ld_a_lbl(f'{p}_y')
-    a.call('add_a_b_wrap')
-    a.ld_lbl_a(f'{p}_y')
+    a.ld_a_lbl(ast_lbl(i, 'x'))
+    a.call('add_wrap')
+    a.ld_lbl_a(ast_lbl(i, 'x'))
+    a.ld_a_lbl(ast_lbl(i, 'y'))
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl(ast_lbl(i, 'dy'))
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl(ast_lbl(i, 'y'))
+    a.call('add_wrap')
+    a.ld_lbl_a(ast_lbl(i, 'y'))
+    a.ld_a_lbl(ast_lbl(i, 'size'))
+    a.inc_r('a')
+    a.ld_lbl_a(ast_lbl(i, 'timer'))
     a.label(skip)
 a.ret()
 
-# ─── Collision handling ─────────────────────────────────────────────────────────
-a.label('pair_hit_test')
-copy_lbl('pair_x1', 'tmp_a')
-a.ld_a_lbl('pair_x2')
-a.ld_r_r('b', 'a')
-a.ld_a_lbl('tmp_a')
-a.sub_r('b')
-a.cp_n(3)
-a.jp('c', 'pht_x_ok')
-a.cp_n(254)
-a.jp('nc', 'pht_x_ok')
-a.xor_r('a')
-a.ret()
-a.label('pht_x_ok')
-copy_lbl('pair_y1', 'tmp_a')
-a.ld_a_lbl('pair_y2')
-a.ld_r_r('b', 'a')
-a.ld_a_lbl('tmp_a')
-a.sub_r('b')
-a.cp_n(3)
-a.jp('c', 'pht_yes')
-a.cp_n(254)
-a.jp('nc', 'pht_yes')
-a.xor_r('a')
-a.ret()
-a.label('pht_yes')
-store_imm('tmp_a', 1)
-a.ld_a_lbl('tmp_a')
+# ─── Collisions ────────────────────────────────────────────────────────────────
+for bi in range(2):
+    a.label(f'check_bullet{bi}_collision')
+    a.ld_a_lbl(bullet_lbl(bi, 'active'))
+    a.or_r('a')
+    a.ret_cc('z')
+    load_coord_pair(bullet_lbl(bi, 'x'), bullet_lbl(bi, 'y'))
+    for ai in range(8):
+        miss = f'cbc_{bi}_{ai}_miss'
+        emit_asteroid_hit_check('d', 'e', ai, miss)
+        store_imm(bullet_lbl(bi, 'active'), 0)
+        a.call(f'split_ast_{ai}')
+        a.ret()
+        a.label(miss)
+    a.ret()
+
+a.label('check_bullet_collisions')
+a.call('check_bullet0_collision')
+a.call('check_bullet1_collision')
 a.ret()
 
-a.label('trigger_ship_hit')
-copy_lbl('ship_x', 'exp_x')
-copy_lbl('ship_y', 'exp_y')
-a.ld_a_lbl('lives')
+a.label('ship_collision_point')
+for ai in range(8):
+    miss = f'scp_{ai}_miss'
+    emit_asteroid_hit_check('d', 'e', ai, miss)
+    a.call('lose_life')
+    a.ld_r_n('a', 1)
+    a.ret()
+    a.label(miss)
+a.xor_r('a')
+a.ret()
+
+a.label('check_ship_collision')
+load_coord_pair('ship_x', 'ship_y')
+a.call('ship_collision_point')
 a.or_r('a')
-a.ret_cc('z')
+a.ret_cc('nz')
+
+load_coord_pair('ship_x', 'ship_y')
+a.ld_a_lbl('ship_dir')
+a.ld_rp_label('hl', 'ship_off1_dx_table')
+a.call('table_lookup_a')
+a.ld_r_r('b', 'a')
+a.ld_r_r('a', 'd')
+a.call('add_wrap')
+a.ld_r_r('d', 'a')
+a.ld_a_lbl('ship_dir')
+a.ld_rp_label('hl', 'ship_off1_dy_table')
+a.call('table_lookup_a')
+a.ld_r_r('b', 'a')
+a.ld_r_r('a', 'e')
+a.call('add_wrap')
+a.ld_r_r('e', 'a')
+a.call('ship_collision_point')
+a.or_r('a')
+a.ret_cc('nz')
+
+load_coord_pair('ship_x', 'ship_y')
+a.ld_a_lbl('ship_dir')
+a.ld_rp_label('hl', 'ship_off2_dx_table')
+a.call('table_lookup_a')
+a.ld_r_r('b', 'a')
+a.ld_r_r('a', 'd')
+a.call('add_wrap')
+a.ld_r_r('d', 'a')
+a.ld_a_lbl('ship_dir')
+a.ld_rp_label('hl', 'ship_off2_dy_table')
+a.call('table_lookup_a')
+a.ld_r_r('b', 'a')
+a.ld_r_r('a', 'e')
+a.call('add_wrap')
+a.ld_r_r('e', 'a')
+a.call('ship_collision_point')
+a.ret()
+
+a.label('check_wave_clear')
+for i in range(8):
+    ready = f'cwc_active_{i}'
+    a.ld_a_lbl(ast_lbl(i, 'active'))
+    a.or_r('a')
+    a.jp('nz', ready)
+a.call('init_wave')
+a.ret()
+for i in range(8):
+    a.label(f'cwc_active_{i}')
+a.ret()
+
+# ─── Splitting / lives ─────────────────────────────────────────────────────────
+a.label('spawn_free_asteroid')
+for i in range(8):
+    nxt = f'sfa_next_{i}'
+    a.ld_a_lbl(ast_lbl(i, 'active'))
+    a.or_r('a')
+    a.jp('nz', nxt)
+    store_imm(ast_lbl(i, 'active'), 1)
+    copy_lbl('spawn_x', ast_lbl(i, 'x'))
+    copy_lbl('spawn_y', ast_lbl(i, 'y'))
+    copy_lbl('spawn_x', ast_lbl(i, 'old_x'))
+    copy_lbl('spawn_y', ast_lbl(i, 'old_y'))
+    copy_lbl('spawn_dx', ast_lbl(i, 'dx'))
+    copy_lbl('spawn_dy', ast_lbl(i, 'dy'))
+    copy_lbl('spawn_size', ast_lbl(i, 'size'))
+    store_imm(ast_lbl(i, 'timer'), 0)
+    a.ret()
+    a.label(nxt)
+a.ret()
+
+for i in range(8):
+    a.label(f'split_ast_{i}')
+    a.ld_a_lbl(ast_lbl(i, 'size'))
+    a.or_r('a')
+    a.jp('z', f'split_small_{i}')
+    a.cp_n(1)
+    a.jp('z', f'split_medium_{i}')
+
+    copy_lbl(ast_lbl(i, 'dx'), 'tmp_dx')
+    copy_lbl(ast_lbl(i, 'dy'), 'tmp_dy')
+    copy_lbl(ast_lbl(i, 'x'), 'spawn_x')
+    copy_lbl(ast_lbl(i, 'y'), 'spawn_y')
+    copy_lbl('tmp_dy', ast_lbl(i, 'dx'))
+    copy_lbl('tmp_dx', ast_lbl(i, 'dy'))
+    store_imm(ast_lbl(i, 'size'), 1)
+    store_imm(ast_lbl(i, 'timer'), 0)
+    a.ld_a_lbl('tmp_dy')
+    a.call('flip_unit')
+    a.ld_lbl_a('spawn_dx')
+    a.ld_a_lbl('tmp_dx')
+    a.call('flip_unit')
+    a.ld_lbl_a('spawn_dy')
+    store_imm('spawn_size', 1)
+    a.call('spawn_free_asteroid')
+    a.ret()
+
+    a.label(f'split_medium_{i}')
+    copy_lbl(ast_lbl(i, 'dx'), 'tmp_dx')
+    copy_lbl(ast_lbl(i, 'dy'), 'tmp_dy')
+    copy_lbl(ast_lbl(i, 'x'), 'spawn_x')
+    copy_lbl(ast_lbl(i, 'y'), 'spawn_y')
+    copy_lbl('tmp_dy', ast_lbl(i, 'dx'))
+    copy_lbl('tmp_dx', ast_lbl(i, 'dy'))
+    store_imm(ast_lbl(i, 'size'), 0)
+    store_imm(ast_lbl(i, 'timer'), 0)
+    a.ld_a_lbl('tmp_dy')
+    a.call('flip_unit')
+    a.ld_lbl_a('spawn_dx')
+    a.ld_a_lbl('tmp_dx')
+    a.call('flip_unit')
+    a.ld_lbl_a('spawn_dy')
+    store_imm('spawn_size', 0)
+    a.call('spawn_free_asteroid')
+    a.ret()
+
+    a.label(f'split_small_{i}')
+    store_imm(ast_lbl(i, 'active'), 0)
+    a.ret()
+
+a.label('lose_life')
+a.ld_a_lbl('lives')
 a.dec_r('a')
 a.ld_lbl_a('lives')
-store_imm('explosion_timer', 12)
-store_imm('thrust_flag', 0)
-store_imm('invuln', 0)
+a.or_r('a')
+a.jp('z', 'game_over')
+a.call('clear_fb')
+a.call('clear_bullets')
+a.call('reset_ship')
+a.call('init_wave')
 a.ret()
 
-a.label('handle_collisions')
-for bi in range(BULLET_SLOTS):
-    bp = bullet_prefix(bi)
-    bullet_done = f'hc_bullet_done_{bi}'
-    bullet_next = f'hc_bullet_next_{bi}'
-    a.ld_a_lbl(f'{bp}_active')
-    a.or_r('a')
-    a.jp('z', bullet_done)
-    for ai in range(AST_SLOTS):
-        ap = asteroid_prefix(ai)
-        pair_next = f'hc_pair_next_{bi}_{ai}'
-        a.ld_a_lbl(f'{ap}_active')
-        a.or_r('a')
-        a.jp('z', pair_next)
-        copy_lbl(f'{bp}_x', 'pair_x1')
-        copy_lbl(f'{bp}_y', 'pair_y1')
-        copy_lbl(f'{ap}_x', 'pair_x2')
-        copy_lbl(f'{ap}_y', 'pair_y2')
-        a.call('pair_hit_test')
-        a.or_r('a')
-        a.jp('z', pair_next)
-        store_imm(f'{bp}_active', 0)
-        a.call(f'destroy_{ap}')
-        a.jp(bullet_next)
-        a.label(pair_next)
-    a.label(bullet_next)
-    a.label(bullet_done)
-a.ld_a_lbl('explosion_timer')
-a.or_r('a')
-a.ret_cc('nz')
-a.ld_a_lbl('invuln')
-a.or_r('a')
-a.ret_cc('nz')
-for ai in range(AST_SLOTS):
-    ap = asteroid_prefix(ai)
-    ship_next = f'hc_ship_next_{ai}'
-    a.ld_a_lbl(f'{ap}_active')
-    a.or_r('a')
-    a.jp('z', ship_next)
-    copy_lbl('ship_x', 'pair_x1')
-    copy_lbl('ship_y', 'pair_y1')
-    copy_lbl(f'{ap}_x', 'pair_x2')
-    copy_lbl(f'{ap}_y', 'pair_y2')
-    a.call('pair_hit_test')
-    a.or_r('a')
-    a.jp('z', ship_next)
-    a.call('trigger_ship_hit')
-    a.ret()
-    a.label(ship_next)
-a.ret()
+a.label('game_over')
+a.call('clear_fb')
+a.ld_r_n('b', 120)
+a.label('go_wait')
+a.call('vsync')
+a.djnz('go_wait')
+a.jp('exit_to_cpm')
 
-# ─── Post-step management ───────────────────────────────────────────────────────
-a.label('count_asteroids')
-a.xor_r('a')
-a.ld_r_r('b', 'a')
-for i in range(AST_SLOTS):
-    skip = f'ca_skip_{i}'
-    a.ld_a_lbl(f'ast{i}_active')
-    a.or_r('a')
-    a.jp('z', skip)
-    a.inc_r('b')
-    a.label(skip)
+# ─── Draw ship / asteroid helpers ──────────────────────────────────────────────
+emit_ship_routine('erase_ship', 'ship_old_x', 'ship_old_y', 'ship_old_dir', BLACK)
+emit_ship_routine('draw_ship', 'ship_x', 'ship_y', 'ship_dir', BRIGHT_WHITE)
+
+a.label('draw_asteroid_shape')
 a.ld_r_r('a', 'b')
-a.ld_lbl_a('active_count')
-a.ret()
-
-a.label('post_collision')
-a.call('count_asteroids')
-a.ld_a_lbl('active_count')
 a.or_r('a')
-a.jp('nz', 'pc_no_wave')
-a.ld_a_lbl('wave_count')
-a.cp_n(AST_SLOTS)
-a.jp('nc', 'pc_wave_same')
-a.inc_r('a')
-a.ld_lbl_a('wave_count')
-a.label('pc_wave_same')
-a.call('spawn_wave')
-a.label('pc_no_wave')
-a.ld_a_lbl('invuln')
-a.or_r('a')
-a.jp('z', 'pc_no_inv')
-a.dec_r('a')
-a.ld_lbl_a('invuln')
-a.label('pc_no_inv')
-a.ld_a_lbl('explosion_timer')
-a.or_r('a')
-a.jp('z', 'pc_done')
-a.dec_r('a')
-a.ld_lbl_a('explosion_timer')
-a.jp('nz', 'pc_done')
-a.ld_a_lbl('lives')
-a.or_r('a')
-a.jp('z', 'exit_to_cpm')
-a.call('respawn_ship')
-a.label('pc_done')
-a.ret()
-
-# ─── Drawing ────────────────────────────────────────────────────────────────────
-a.label('draw_tmp_asteroid')
-a.ld_a_lbl('tmp_size')
-a.or_r('a')
-a.jp('z', 'dta_small')
+a.jp('z', 'draw_ast_small')
 a.cp_n(1)
-a.jp('z', 'dta_med')
-for dx, dy in AST_LARGE:
-    emit_plot_rel('tmp_x', 'tmp_y', dx, dy, WHITE)
-a.ret()
-a.label('dta_med')
-for dx, dy in AST_MED:
-    emit_plot_rel('tmp_x', 'tmp_y', dx, dy, WHITE)
-a.ret()
-a.label('dta_small')
-emit_plot_rel('tmp_x', 'tmp_y', 0, 0, WHITE)
+a.jp('z', 'draw_ast_medium')
+a.jp('draw_ast_large')
+
+a.label('draw_ast_small')
+a.call('plot')
 a.ret()
 
-a.label('draw_explosion')
-for dx, dy, color in EXPLOSION_POINTS:
-    emit_plot_rel('exp_x', 'exp_y', dx, dy, color)
+a.label('draw_ast_medium')
+emit_offsets_shape(AST_MED_POINTS)
 a.ret()
 
-a.label('draw_scene')
-for i in range(BULLET_SLOTS):
-    skip = f'draw_bul_skip_{i}'
-    a.ld_a_lbl(f'bul{i}_active')
-    a.or_r('a')
-    a.jp('z', skip)
-    emit_plot_var(f'bul{i}_x', f'bul{i}_y', BRIGHT_WHITE)
-    a.label(skip)
-for i in range(AST_SLOTS):
-    p = asteroid_prefix(i)
-    skip = f'draw_ast_skip_{i}'
-    a.ld_a_lbl(f'{p}_active')
-    a.or_r('a')
-    a.jp('z', skip)
-    copy_lbl(f'{p}_x', 'tmp_x')
-    copy_lbl(f'{p}_y', 'tmp_y')
-    copy_lbl(f'{p}_size', 'tmp_size')
-    a.call('draw_tmp_asteroid')
-    a.label(skip)
-a.ld_a_lbl('explosion_timer')
+a.label('draw_ast_large')
+emit_offsets_shape(AST_LARGE_POINTS)
+a.ret()
+
+# ─── Small utility routines ────────────────────────────────────────────────────
+a.label('table_lookup_a')
+a.ld_r_r('e', 'a')
+a.ld_r_n('d', 0)
+a.add_hl_rp('de')
+a.ld_r_hl('a')
+a.ret()
+
+a.label('flip_unit')
 a.or_r('a')
-a.jp('z', 'draw_ship_check')
-a.call('draw_explosion')
+a.ret_cc('z')
+a.cp_n(1)
+a.jp('z', 'flip_to_neg')
+a.ld_r_n('a', 1)
 a.ret()
-a.label('draw_ship_check')
-a.ld_a_lbl('invuln')
-a.or_r('a')
-a.jp('z', 'draw_ship_now')
-a.ld_a_lbl('frame')
-a.and_n(0x04)
-a.jp('nz', 'draw_ship_done')
-a.label('draw_ship_now')
-a.ld_a_lbl('ship_dir')
-for idx in range(8):
-    nxt = f'draw_ship_next_{idx}'
-    a.cp_n(idx)
-    a.jp('nz', nxt)
-    for dx, dy in SHIP_PIXELS[idx]:
-        emit_plot_rel('ship_x', 'ship_y', dx, dy, BRIGHT_WHITE)
-    a.ld_a_lbl('thrust_flag')
-    a.or_r('a')
-    a.jp('z', 'draw_ship_done')
-    for dx, dy in FLAME_PIXELS[idx]:
-        emit_plot_rel('ship_x', 'ship_y', dx, dy, BRIGHT_YELLOW)
-    a.jp('draw_ship_done')
-    a.label(nxt)
-a.label('draw_ship_done')
+a.label('flip_to_neg')
+a.ld_r_n('a', 0xFF)
 a.ret()
 
-# ─── Exit / hardware ────────────────────────────────────────────────────────────
+a.label('absdiff_within')
+a.sub_r('b')
+a.jp('nc', 'adw_pos')
+a.neg()
+a.label('adw_pos')
+a.cp_r('c')
+a.ret()
+
+a.label('apply_thrust_component_hl')
+a.ld_r_r('a', 'b')
+a.or_r('a')
+a.ret_cc('z')
+a.cp_n(128)
+a.jp('nc', 'atc_neg')
+a.ld_r_hl('a')
+a.cp_n(3)
+a.ret_cc('z')
+a.inc_r('a')
+a.ld_hl_r('a')
+a.ret()
+a.label('atc_neg')
+a.ld_r_hl('a')
+a.cp_n(0xFD)
+a.ret_cc('z')
+a.dec_r('a')
+a.ld_hl_r('a')
+a.ret()
+
+a.label('apply_friction_hl')
+a.ld_r_hl('a')
+a.or_r('a')
+a.ret_cc('z')
+a.cp_n(128)
+a.jp('nc', 'afh_neg')
+a.dec_r('a')
+a.ld_hl_r('a')
+a.ret()
+a.label('afh_neg')
+a.inc_r('a')
+a.ld_hl_r('a')
+a.ret()
+
+a.label('add_wrap')
+a.ld_r_r('d', 'a')
+a.ld_r_r('a', 'b')
+a.or_r('a')
+a.jp('z', 'aw_zero')
+a.cp_n(128)
+a.jp('nc', 'aw_neg')
+a.ld_r_r('b', 'a')
+a.ld_r_r('a', 'd')
+a.label('aw_pos_loop')
+a.cp_n(63)
+a.jp('z', 'aw_pos_wrap')
+a.inc_r('a')
+a.djnz('aw_pos_loop')
+a.ret()
+a.label('aw_pos_wrap')
+a.xor_r('a')
+a.djnz('aw_pos_loop')
+a.ret()
+a.label('aw_neg')
+a.neg()
+a.ld_r_r('b', 'a')
+a.ld_r_r('a', 'd')
+a.label('aw_neg_loop')
+a.or_r('a')
+a.jp('z', 'aw_neg_wrap')
+a.dec_r('a')
+a.djnz('aw_neg_loop')
+a.ret()
+a.label('aw_neg_wrap')
+a.ld_r_n('a', 63)
+a.djnz('aw_neg_loop')
+a.ret()
+a.label('aw_zero')
+a.ld_r_r('a', 'd')
+a.ret()
+
 a.label('exit_to_cpm')
 a.emit(0xC3, 0x00, 0x00)
+
+a.label('rand8')
+a.ld_a_lbl('rng')
+a.ld_r_r('b', 'a')
+a.add_a_r('a')
+a.add_a_r('a')
+a.add_a_r('b')
+a.add_a_n(3)
+a.ld_lbl_a('rng')
+a.ret()
 
 a.label('vsync')
 a.label('vs1')
@@ -973,59 +1118,81 @@ a.pop('de')
 a.pop('bc')
 a.ret()
 
-# ─── Data ───────────────────────────────────────────────────────────────────────
+# ─── Data ──────────────────────────────────────────────────────────────────────
+a.label('in_x'); a.db(0)
+a.label('in_y'); a.db(0)
+a.label('in_btn'); a.db(0xFF)
+a.label('fire_lock'); a.db(0)
+a.label('fire_request'); a.db(0)
+a.label('frame_counter'); a.db(0)
+a.label('lives'); a.db(3)
+a.label('rng'); a.db(0x5A)
+
 a.label('ship_x'); a.db(32)
 a.label('ship_y'); a.db(32)
+a.label('ship_old_x'); a.db(32)
+a.label('ship_old_y'); a.db(32)
 a.label('ship_dir'); a.db(0)
+a.label('ship_old_dir'); a.db(0)
 a.label('ship_vx'); a.db(0)
 a.label('ship_vy'); a.db(0)
-a.label('invuln'); a.db(0)
-a.label('thrust_flag'); a.db(0)
-a.label('explosion_timer'); a.db(0)
-a.label('exp_x'); a.db(32)
-a.label('exp_y'); a.db(32)
-a.label('frame'); a.db(0)
-a.label('frame3'); a.db(0)
-a.label('btn_state'); a.db(0xFF)
-a.label('lives'); a.db(3)
-a.label('score'); a.db(0)
-a.label('wave_count'); a.db(4)
-a.label('active_count'); a.db(0)
-a.label('pair_x1'); a.db(0)
-a.label('pair_y1'); a.db(0)
-a.label('pair_x2'); a.db(0)
-a.label('pair_y2'); a.db(0)
-a.label('tmp_x'); a.db(0)
-a.label('tmp_y'); a.db(0)
+
+for i in range(2):
+    a.label(bullet_lbl(i, 'active')); a.db(0)
+    a.label(bullet_lbl(i, 'x')); a.db(0)
+    a.label(bullet_lbl(i, 'y')); a.db(0)
+    a.label(bullet_lbl(i, 'dx')); a.db(0)
+    a.label(bullet_lbl(i, 'dy')); a.db(0)
+    a.label(bullet_lbl(i, 'life')); a.db(0)
+    a.label(bullet_lbl(i, 'old_x')); a.db(0)
+    a.label(bullet_lbl(i, 'old_y')); a.db(0)
+
+for i in range(8):
+    a.label(ast_lbl(i, 'active')); a.db(0)
+    a.label(ast_lbl(i, 'x')); a.db(0)
+    a.label(ast_lbl(i, 'y')); a.db(0)
+    a.label(ast_lbl(i, 'dx')); a.db(0)
+    a.label(ast_lbl(i, 'dy')); a.db(0)
+    a.label(ast_lbl(i, 'size')); a.db(0)
+    a.label(ast_lbl(i, 'timer')); a.db(0)
+    a.label(ast_lbl(i, 'old_x')); a.db(0)
+    a.label(ast_lbl(i, 'old_y')); a.db(0)
+
+a.label('spawn_x'); a.db(0)
+a.label('spawn_y'); a.db(0)
+a.label('spawn_dx'); a.db(0)
+a.label('spawn_dy'); a.db(0)
+a.label('spawn_size'); a.db(0)
 a.label('tmp_dx'); a.db(0)
 a.label('tmp_dy'); a.db(0)
-a.label('tmp_size'); a.db(0)
-a.label('tmp_diff'); a.db(0)
-a.label('tmp_a'); a.db(0)
 
-for i in range(BULLET_SLOTS):
-    a.label(f'bul{i}_active'); a.db(0)
-    a.label(f'bul{i}_x'); a.db(0)
-    a.label(f'bul{i}_y'); a.db(0)
-    a.label(f'bul{i}_dx'); a.db(0)
-    a.label(f'bul{i}_dy'); a.db(0)
-    a.label(f'bul{i}_life'); a.db(0)
+a.label('dir_dx_table')
+for v in DIR_DX:
+    a.db(s8(v))
+a.label('dir_dy_table')
+for v in DIR_DY:
+    a.db(s8(v))
+a.label('bullet_dx_table')
+for v in BULLET_DX:
+    a.db(s8(v))
+a.label('bullet_dy_table')
+for v in BULLET_DY:
+    a.db(s8(v))
+a.label('ship_off1_dx_table')
+for v in SHIP_OFF1_DX:
+    a.db(s8(v))
+a.label('ship_off1_dy_table')
+for v in SHIP_OFF1_DY:
+    a.db(s8(v))
+a.label('ship_off2_dx_table')
+for v in SHIP_OFF2_DX:
+    a.db(s8(v))
+a.label('ship_off2_dy_table')
+for v in SHIP_OFF2_DY:
+    a.db(s8(v))
 
-for i in range(AST_SLOTS):
-    a.label(f'ast{i}_active'); a.db(0)
-    a.label(f'ast{i}_x'); a.db(0)
-    a.label(f'ast{i}_y'); a.db(0)
-    a.label(f'ast{i}_dx'); a.db(0)
-    a.label(f'ast{i}_dy'); a.db(0)
-    a.label(f'ast{i}_size'); a.db(0)
-
-a.resolve()
-if len(a.code) > 8192:
-    raise SystemExit(f'Program too large: {len(a.code)} bytes')
-
+# ─── Save ──────────────────────────────────────────────────────────────────────
 out = os.path.join(os.path.dirname(__file__), '..', 'web', 'public', 'ASTEROIDS.COM')
-out2 = os.path.join(os.path.dirname(__file__), '..', 'games', 'ASTEROIDS.COM')
-os.makedirs(os.path.dirname(out), exist_ok=True)
-os.makedirs(os.path.dirname(out2), exist_ok=True)
 a.save(out)
+out2 = os.path.join(os.path.dirname(__file__), '..', 'games', 'ASTEROIDS.COM')
 a.save(out2)

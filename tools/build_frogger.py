@@ -1,22 +1,12 @@
 #!/usr/bin/env python3
 """
-FROGGER — A lane-crossing game for the Cromemco Dazzler + D+7A joystick.
+FROGGER — A split-screen lane-crossing game for the Cromemco Dazzler + D+7A joystick.
 Builds a CP/M .COM file (Z80 machine code, ORG 0x0100).
-
-Display: 64×64 color, 2K normal mode (16 IBGR colors)
-Framebuffer: 0x2000 (page 0x10), 2048 bytes
-  4 quadrants of 512 bytes: TL, TR, BL, BR
-  Each quadrant: 32×32 pixels, 16 bytes/row, 2 px/byte (low nib=left, high=right)
-
-Joystick: Cromemco D+7A
-  Port 0x18: buttons (active-LOW, bit0=exit)
-  Port 0x19: X-axis (0=center, 1-127=right, 128-255=left)
-  Port 0x1A: Y-axis
 """
 
 import os, sys
 
-# ─── Mini Z80 assembler (same as MAZECHASE) ────────────────────────────────────
+# ─── Mini Z80 assembler (same as BREAKOUT) ─────────────────────────────────────
 
 class Z80:
     def __init__(self, org=0x0100):
@@ -167,6 +157,7 @@ class Z80:
     def neg(self): self.emit(0xED, 0x44)
 
 # ─── Constants ──────────────────────────────────────────────────────────────────
+
 DAZ_NX, DAZ_CC = 0x0E, 0x0F
 FB_BASE = 0x2000
 FB_PAGE = 0x10
@@ -176,34 +167,41 @@ JOY_BTN, JOY_X, JOY_Y = 0x18, 0x19, 0x1A
 BLACK, RED, GREEN, YELLOW = 0, 1, 2, 3
 BLUE, MAGENTA, CYAN, WHITE = 4, 5, 6, 7
 BRIGHT = 8
+DARK_GREY = 8
 BRIGHT_RED = RED | BRIGHT
 BRIGHT_GREEN = GREEN | BRIGHT
 BRIGHT_YELLOW = YELLOW | BRIGHT
 BRIGHT_BLUE = BLUE | BRIGHT
 BRIGHT_WHITE = WHITE | BRIGHT
 
+SCREEN_ROAD = 0
+SCREEN_RIVER = 1
 FROG_START_X = 30
-FROG_START_Y = 60
-FROG_COLOR = BRIGHT_GREEN
-TIMER_RESET = 60
-TIMER_TICK_RESET = 6
-DIR_RIGHT, DIR_LEFT, DIR_UP, DIR_DOWN = 1, 2, 3, 4
+FROG_START_Y = 58
+FROG_W = 4
+FROG_H = 4
+HOP_SIZE = 8
+HOP_COOLDOWN = 6
+HOME_Y = 6
+HOME_W = 6
+HOME_H = 6
 HOME_XS = [6, 22, 38, 54]
-HOME_W = 4
 
-LANES = [
-    dict(idx=1, y=56, kind='road',  bg=BLACK, color=RED,         width=4, speed=6, direction='right', xs=[4, 26, 48]),
-    dict(idx=2, y=52, kind='road',  bg=BLACK, color=YELLOW,      width=3, speed=4, direction='left',  xs=[10, 30, 50]),
-    dict(idx=3, y=48, kind='road',  bg=BLACK, color=MAGENTA,     width=6, speed=6, direction='right', xs=[2, 24, 46]),
-    dict(idx=4, y=44, kind='road',  bg=BLACK, color=BRIGHT_RED,  width=3, speed=2, direction='left',  xs=[14, 34, 54]),
-    dict(idx=5, y=36, kind='river', bg=BLUE,  color=YELLOW,      width=6, speed=5, direction='right', xs=[0, 22, 44]),
-    dict(idx=6, y=32, kind='river', bg=BLUE,  color=YELLOW,      width=4, speed=4, direction='left',  xs=[12, 32, 52]),
-    dict(idx=7, y=28, kind='river', bg=BLUE,  color=YELLOW,      width=5, speed=5, direction='right', xs=[6, 28, 50]),
-    dict(idx=8, y=24, kind='river', bg=BLUE,  color=GREEN,       width=7, speed=3, direction='left',  xs=[8, 30, 52]),
+ROAD_LANES = [
+    dict(idx=1, y=48, w=6, color=RED,        bg=BLACK, dir='right', speed=5, xs=[0, 24, 48]),
+    dict(idx=2, y=40, w=5, color=YELLOW,     bg=BLACK, dir='left',  speed=3, xs=[10, 32, 54]),
+    dict(idx=3, y=32, w=8, color=MAGENTA,    bg=BLACK, dir='right', speed=5, xs=[4, 26, 48]),
+    dict(idx=4, y=24, w=5, color=BRIGHT_RED, bg=BLACK, dir='left',  speed=2, xs=[8, 30, 52]),
 ]
 
-ROAD_LANES = [lane for lane in LANES if lane['kind'] == 'road']
-RIVER_LANES = [lane for lane in LANES if lane['kind'] == 'river']
+RIVER_LANES = [
+    dict(idx=5, y=48, w=12, color=YELLOW, bg=BLUE,  dir='right', speed=4, xs=[0, 24, 48]),
+    dict(idx=6, y=40, w=8,  color=YELLOW, bg=BLUE,  dir='left',  speed=3, xs=[10, 30, 50]),
+    dict(idx=7, y=32, w=10, color=YELLOW, bg=BLUE,  dir='right', speed=4, xs=[4, 26, 48]),
+    dict(idx=8, y=24, w=6,  color=GREEN,  bg=BLUE,  dir='left',  speed=3, xs=[8, 30, 52]),
+]
+
+ALL_LANES = ROAD_LANES + RIVER_LANES
 
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -229,104 +227,12 @@ def hline_imm(x, y, w, color):
 
 
 def rect_imm(x, y, w, h, color):
-    for row in range(h):
-        hline_imm(x, y + row, w, color)
+    for yy in range(y, y + h):
+        hline_imm(x, yy, w, color)
 
 
-def fill_rows(y0, y1, color):
-    for y in range(y0, y1 + 1):
-        hline_imm(0, y, 64, color)
-
-
-def emit_store_a(label):
-    a.ld_lbl_a(label)
-
-
-def emit_load_reg_from_label(reg, label):
-    a.ld_a_lbl(label)
-    a.ld_r_r(reg, 'a')
-
-
-def emit_obstacle_overlap(obs_label, width, hit_label, prefix):
-    nowrap = f'{prefix}_nowrap'
-    wrap = f'{prefix}_wrap'
-    cont = f'{prefix}_cont'
-    left_hit = f'{prefix}_left_hit'
-
-    a.ld_a_lbl(obs_label)
-    a.cp_n(65 - width)
-    a.jp('c', nowrap)
-
-    a.label(wrap)
-    a.ld_a_lbl('frog_x')
-    a.cp_n(width)
-    a.jp('c', left_hit)
-    a.inc_r('a')
-    a.ld_r_r('b', 'a')
-    a.ld_a_lbl(obs_label)
-    a.cp_r('b')
-    a.jp('c', hit_label)
-    a.jp('z', hit_label)
-    a.jp(cont)
-
-    a.label(left_hit)
-    a.jp(hit_label)
-
-    a.label(nowrap)
-    a.ld_a_lbl('frog_x')
-    a.add_a_n(2)
-    a.ld_r_r('b', 'a')
-    a.ld_a_lbl(obs_label)
-    a.cp_r('b')
-    a.jp('nc', cont)
-
-    a.ld_a_lbl(obs_label)
-    a.add_a_n(width)
-    a.ld_r_r('b', 'a')
-    a.ld_a_lbl('frog_x')
-    a.cp_r('b')
-    a.jp('nc', cont)
-    a.jp(hit_label)
-
-    a.label(cont)
-
-
-def emit_draw_wrapped_obstacle(obs_label, lane, prefix):
-    width = lane['width']
-    y = lane['y']
-    color = lane['color']
-    nowrap = f'{prefix}_nowrap'
-    done = f'{prefix}_done'
-
-    a.ld_a_lbl(obs_label)
-    a.cp_n(65 - width)
-    a.jp('c', nowrap)
-
-    emit_load_reg_from_label('d', obs_label)
-    a.ld_r_n('e', y)
-    a.ld_r_n('c', color)
-    a.ld_r_n('a', 64)
-    a.sub_r('d')
-    a.ld_r_r('b', 'a')
-    a.call('rect4')
-
-    a.ld_r_n('d', 0)
-    a.ld_r_n('e', y)
-    a.ld_r_n('c', color)
-    a.ld_a_lbl(obs_label)
-    a.add_a_n((width - 64) & 0xFF)
-    a.ld_r_r('b', 'a')
-    a.call('rect4')
-    a.jp(done)
-
-    a.label(nowrap)
-    emit_load_reg_from_label('d', obs_label)
-    a.ld_r_n('e', y)
-    a.ld_r_n('b', width)
-    a.ld_r_n('c', color)
-    a.call('rect4')
-
-    a.label(done)
+def lane_x_label(idx, obj_idx):
+    return f'lane{idx}_x{obj_idx}'
 
 
 def lane_speed_label(idx):
@@ -341,36 +247,111 @@ def lane_move_label(idx):
     return f'lane{idx}_move'
 
 
-def lane_x_label(idx, obj_idx):
-    return f'lane{idx}_x{obj_idx}'
-
-
 def home_label(idx):
     return f'home_{idx}'
 
+
+def emit_draw_wrapped_rect(x_label, y, width, color, prefix):
+    nowrap = f'{prefix}_nowrap'
+    done = f'{prefix}_done'
+    a.ld_a_lbl(x_label)
+    a.cp_n(65 - width)
+    a.jp('c', nowrap)
+
+    a.ld_r_r('d', 'a')
+    a.ld_r_n('e', y)
+    a.ld_r_n('c', color)
+    a.ld_r_n('a', 64)
+    a.sub_r('d')
+    a.ld_r_r('b', 'a')
+    a.call('rect4')
+
+    a.ld_r_n('d', 0)
+    a.ld_r_n('e', y)
+    a.ld_r_n('c', color)
+    a.ld_a_lbl(x_label)
+    a.add_a_n((width - 64) & 0xFF)
+    a.ld_r_r('b', 'a')
+    a.call('rect4')
+    a.jp(done)
+
+    a.label(nowrap)
+    a.ld_a_lbl(x_label)
+    a.ld_r_r('d', 'a')
+    a.ld_r_n('e', y)
+    a.ld_r_n('b', width)
+    a.ld_r_n('c', color)
+    a.call('rect4')
+
+    a.label(done)
+
+
+def emit_overlap_jump(x_label, width, hit_label, prefix):
+    nowrap = f'{prefix}_nowrap'
+    cont = f'{prefix}_cont'
+
+    a.ld_a_lbl(x_label)
+    a.cp_n(65 - width)
+    a.jp('c', nowrap)
+
+    a.ld_a_lbl(x_label)
+    a.add_a_n((width - 64) & 0xFF)
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl('frog_x')
+    a.cp_r('b')
+    a.jp('c', hit_label)
+
+    a.ld_a_lbl('frog_x')
+    a.add_a_n(FROG_W - 1)
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl(x_label)
+    a.cp_r('b')
+    a.jp('c', hit_label)
+    a.jp('z', hit_label)
+    a.jp(cont)
+
+    a.label(nowrap)
+    a.ld_a_lbl('frog_x')
+    a.add_a_n(FROG_W - 1)
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl(x_label)
+    a.cp_r('b')
+    a.jp('nc', cont)
+
+    a.ld_a_lbl(x_label)
+    a.add_a_n(width)
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl('frog_x')
+    a.cp_r('b')
+    a.jp('nc', cont)
+    a.jp(hit_label)
+
+    a.label(cont)
+
+
+def emit_home_slot(x, filled=False):
+    rect_imm(x, HOME_Y, HOME_W, HOME_H, GREEN)
+    if filled:
+        rect_imm(x + 1, HOME_Y + 1, HOME_W - 2, HOME_H - 2, BRIGHT_YELLOW)
+
 # ─── Entry ─────────────────────────────────────────────────────────────────────
+
 a.label('start')
 a.di()
 a.ld_rp_nn('sp', 0x1F00)
-
 a.ld_r_n('a', 0x30)
 a.out_a(DAZ_CC)
 a.ld_r_n('a', 0x80 | FB_PAGE)
 a.out_a(DAZ_NX)
-
 a.call('init_game')
 
-# ─── Main loop ─────────────────────────────────────────────────────────────────
 a.label('main_loop')
 a.call('vsync')
-a.call('update_timer')
 a.call('erase_frog')
-a.call('move_lanes')
+a.call('update_obstacles')
 a.call('read_input')
-a.call('move_frog')
-a.call('check_collisions')
-a.call('draw_ui')
-a.call('draw_lanes')
+a.call('handle_hop')
+a.call('check_state')
 a.call('draw_frog')
 a.jp('main_loop')
 
@@ -379,35 +360,48 @@ a.jp('main_loop')
 # ═══════════════════════════════════════════════════════════════════════════════
 
 a.label('init_game')
-a.call('clear_fb')
 a.ld_r_n('a', 3)
 a.ld_lbl_a('lives')
 a.ld_r_n('a', 1)
 a.ld_lbl_a('level')
 a.xor_r('a')
-a.ld_lbl_a('homes_filled')
-a.ld_lbl_a('joy_prev')
-a.ld_lbl_a('hop_cooldown')
-a.call('init_lane_speeds')
+a.ld_lbl_a('score')
 a.call('clear_homes')
-a.call('reset_round')
+a.call('init_lane_speeds')
+a.jp('enter_road')
+
+a.label('clear_homes')
+a.xor_r('a')
+for i in range(4):
+    a.ld_lbl_a(home_label(i))
+a.ld_lbl_a('homes_filled')
 a.ret()
 
 a.label('init_lane_speeds')
-for lane in LANES:
+for lane in ALL_LANES:
     a.ld_r_n('a', lane['speed'])
     a.ld_lbl_a(lane_speed_label(lane['idx']))
 a.ret()
 
-a.label('clear_homes')
+a.label('reset_input_state')
 a.xor_r('a')
-for idx in range(4):
-    a.ld_lbl_a(home_label(idx))
-a.ld_lbl_a('homes_filled')
+a.ld_lbl_a('prev_joy_x')
+a.ld_lbl_a('prev_joy_y')
+a.ld_lbl_a('joy_xdir')
+a.ld_lbl_a('joy_ydir')
+a.ld_lbl_a('hop_cd')
 a.ret()
 
-a.label('reset_lane_positions')
-for lane in LANES:
+a.label('reset_frog_bottom')
+a.ld_r_n('a', FROG_START_X)
+a.ld_lbl_a('frog_x')
+a.ld_r_n('a', FROG_START_Y)
+a.ld_lbl_a('frog_y')
+a.call('reset_input_state')
+a.ret()
+
+a.label('reset_road_lanes')
+for lane in ROAD_LANES:
     a.xor_r('a')
     a.ld_lbl_a(lane_counter_label(lane['idx']))
     a.ld_lbl_a(lane_move_label(lane['idx']))
@@ -416,52 +410,134 @@ for lane in LANES:
         a.ld_lbl_a(lane_x_label(lane['idx'], obj_idx))
 a.ret()
 
-a.label('reset_round')
-a.ld_r_n('a', TIMER_RESET)
-a.ld_lbl_a('timer_value')
-a.ld_r_n('a', TIMER_TICK_RESET)
-a.ld_lbl_a('timer_tick')
-a.ld_r_n('a', FROG_START_X)
-a.ld_lbl_a('frog_x')
-a.ld_lbl_a('frog_prev_x')
-a.ld_r_n('a', FROG_START_Y)
-a.ld_lbl_a('frog_y')
-a.ld_lbl_a('frog_prev_y')
+a.label('reset_river_lanes')
+for lane in RIVER_LANES:
+    a.xor_r('a')
+    a.ld_lbl_a(lane_counter_label(lane['idx']))
+    a.ld_lbl_a(lane_move_label(lane['idx']))
+    for obj_idx, xpos in enumerate(lane['xs']):
+        a.ld_r_n('a', xpos)
+        a.ld_lbl_a(lane_x_label(lane['idx'], obj_idx))
+a.ret()
+
+a.label('enter_road')
 a.xor_r('a')
-a.ld_lbl_a('joy_prev')
-a.ld_lbl_a('hop_cooldown')
-a.call('draw_static_background')
-a.call('reset_lane_positions')
-a.call('draw_ui')
-a.call('draw_lanes')
+a.ld_lbl_a('screen')
+a.call('clear_fb')
+a.call('draw_road_bg')
+a.call('reset_frog_bottom')
+a.call('reset_road_lanes')
+a.call('draw_road_lanes')
 a.call('draw_frog')
 a.ret()
 
-a.label('draw_static_background')
-fill_rows(0, 19, BLACK)
-fill_rows(20, 23, BLACK)
-fill_rows(24, 39, BLUE)
-fill_rows(40, 43, GREEN)
-fill_rows(44, 59, BLACK)
-fill_rows(60, 63, GREEN)
+a.label('enter_river')
+a.ld_r_n('a', 1)
+a.ld_lbl_a('screen')
+a.call('clear_fb')
+a.call('draw_river_bg')
 a.call('draw_homes')
+a.call('reset_frog_bottom')
+a.call('reset_river_lanes')
+a.call('draw_river_lanes')
+a.call('draw_frog')
 a.ret()
 
-a.label('update_timer')
-a.ld_a_lbl('timer_tick')
-a.dec_r('a')
-a.ld_lbl_a('timer_tick')
+a.label('draw_road_bg')
+a.ld_r_n('e', 16)
+a.ld_r_n('b', 8)
+a.ld_r_n('c', GREEN)
+a.call('fill_band')
+a.ld_r_n('e', 56)
+a.ld_r_n('b', 8)
+a.ld_r_n('c', GREEN)
+a.call('fill_band')
+a.ret()
+
+a.label('draw_river_bg')
+a.ld_r_n('c', BLUE)
+a.call('fill_screen')
+a.ld_r_n('e', 4)
+a.ld_r_n('b', 20)
+a.ld_r_n('c', GREEN)
+a.call('fill_band')
+a.ld_r_n('e', 56)
+a.ld_r_n('b', 8)
+a.ld_r_n('c', GREEN)
+a.call('fill_band')
+a.ret()
+
+a.label('draw_homes')
+for i, x in enumerate(HOME_XS):
+    filled_lbl = home_label(i)
+    skip_fill = f'home_draw_skip_{i}'
+    a.ld_r_n('d', x)
+    a.ld_r_n('e', HOME_Y)
+    a.ld_r_n('b', HOME_W)
+    a.ld_r_n('c', GREEN)
+    a.call('rect6')
+    a.ld_a_lbl(filled_lbl)
+    a.or_r('a')
+    a.jp('z', skip_fill)
+    a.ld_r_n('d', x + 1)
+    a.ld_r_n('e', HOME_Y + 1)
+    a.ld_r_n('b', HOME_W - 2)
+    a.ld_r_n('c', BRIGHT_YELLOW)
+    a.call('rect4')
+    a.label(skip_fill)
+a.ret()
+
+a.label('draw_road_lanes')
+for lane in ROAD_LANES:
+    for obj_idx in range(3):
+        emit_draw_wrapped_rect(lane_x_label(lane['idx'], obj_idx), lane['y'], lane['w'], lane['color'], f'drl_{lane["idx"]}_{obj_idx}')
+a.ret()
+
+a.label('draw_river_lanes')
+for lane in RIVER_LANES:
+    for obj_idx in range(3):
+        emit_draw_wrapped_rect(lane_x_label(lane['idx'], obj_idx), lane['y'], lane['w'], lane['color'], f'dvl_{lane["idx"]}_{obj_idx}')
+a.ret()
+
+a.label('erase_frog')
+a.ld_a_lbl('screen')
 a.or_r('a')
-a.ret_cc('nz')
-a.ld_r_n('a', TIMER_TICK_RESET)
-a.ld_lbl_a('timer_tick')
-a.ld_a_lbl('timer_value')
-a.or_r('a')
-a.jp('z', 'lose_life')
-a.dec_r('a')
-a.ld_lbl_a('timer_value')
-a.ret_cc('nz')
-a.jp('lose_life')
+a.jp('z', 'ef_road')
+a.ld_a_lbl('frog_y')
+a.cp_n(24)
+a.jp('c', 'ef_green')
+a.cp_n(56)
+a.jp('nc', 'ef_green')
+a.ld_r_n('c', BLUE)
+a.jp('ef_draw')
+a.label('ef_road')
+a.ld_a_lbl('frog_y')
+a.cp_n(24)
+a.jp('c', 'ef_green')
+a.cp_n(56)
+a.jp('nc', 'ef_green')
+a.ld_r_n('c', BLACK)
+a.jp('ef_draw')
+a.label('ef_green')
+a.ld_r_n('c', GREEN)
+a.label('ef_draw')
+a.ld_a_lbl('frog_x')
+a.ld_r_r('d', 'a')
+a.ld_a_lbl('frog_y')
+a.ld_r_r('e', 'a')
+a.ld_r_n('b', FROG_W)
+a.call('rect4')
+a.ret()
+
+a.label('draw_frog')
+a.ld_a_lbl('frog_x')
+a.ld_r_r('d', 'a')
+a.ld_a_lbl('frog_y')
+a.ld_r_r('e', 'a')
+a.ld_r_n('b', FROG_W)
+a.ld_r_n('c', BRIGHT_GREEN)
+a.call('rect4')
+a.ret()
 
 a.label('read_input')
 a.in_a(JOY_BTN)
@@ -474,408 +550,476 @@ a.in_a(JOY_Y)
 a.ld_lbl_a('in_y')
 a.ret()
 
-a.label('move_lanes')
-for lane in LANES:
+a.label('handle_hop')
+a.ld_a_lbl('hop_cd')
+a.or_r('a')
+a.jp('z', 'hh_cd_done')
+a.dec_r('a')
+a.ld_lbl_a('hop_cd')
+a.label('hh_cd_done')
+
+a.ld_a_lbl('in_x')
+a.cp_n(128)
+a.jp('nc', 'hh_x_left')
+a.or_r('a')
+a.jp('nz', 'hh_x_right')
+a.xor_r('a')
+a.ld_lbl_a('joy_xdir')
+a.jp('hh_y_axis')
+a.label('hh_x_left')
+a.ld_r_n('a', 2)
+a.ld_lbl_a('joy_xdir')
+a.jp('hh_y_axis')
+a.label('hh_x_right')
+a.ld_r_n('a', 1)
+a.ld_lbl_a('joy_xdir')
+
+a.label('hh_y_axis')
+a.ld_a_lbl('in_y')
+a.cp_n(128)
+a.jp('nc', 'hh_y_down')
+a.or_r('a')
+a.jp('nz', 'hh_y_up')
+a.xor_r('a')
+a.ld_lbl_a('joy_ydir')
+a.jp('hh_try_x')
+a.label('hh_y_down')
+a.ld_r_n('a', 2)
+a.ld_lbl_a('joy_ydir')
+a.jp('hh_try_x')
+a.label('hh_y_up')
+a.ld_r_n('a', 1)
+a.ld_lbl_a('joy_ydir')
+
+a.label('hh_try_x')
+a.ld_a_lbl('joy_xdir')
+a.or_r('a')
+a.jp('z', 'hh_try_y')
+a.ld_a_lbl('prev_joy_x')
+a.or_r('a')
+a.jp('nz', 'hh_try_y')
+a.ld_a_lbl('hop_cd')
+a.or_r('a')
+a.jp('nz', 'hh_store_prev')
+a.ld_a_lbl('joy_xdir')
+a.cp_n(1)
+a.jp('z', 'hh_hop_right')
+a.jp('hh_hop_left')
+
+a.label('hh_try_y')
+a.ld_a_lbl('joy_ydir')
+a.or_r('a')
+a.jp('z', 'hh_store_prev')
+a.ld_a_lbl('prev_joy_y')
+a.or_r('a')
+a.jp('nz', 'hh_store_prev')
+a.ld_a_lbl('hop_cd')
+a.or_r('a')
+a.jp('nz', 'hh_store_prev')
+a.ld_a_lbl('joy_ydir')
+a.cp_n(1)
+a.jp('z', 'hh_hop_up')
+a.jp('hh_hop_down')
+
+a.label('hh_hop_left')
+a.ld_a_lbl('frog_x')
+a.cp_n(HOP_SIZE)
+a.jp('c', 'hh_left_zero')
+a.sub_n(HOP_SIZE)
+a.jp('hh_left_store')
+a.label('hh_left_zero')
+a.xor_r('a')
+a.label('hh_left_store')
+a.ld_lbl_a('frog_x')
+a.jp('hh_did_hop')
+
+a.label('hh_hop_right')
+a.ld_a_lbl('frog_x')
+a.add_a_n(HOP_SIZE)
+a.cp_n(61)
+a.jp('c', 'hh_right_store')
+a.ld_r_n('a', 60)
+a.label('hh_right_store')
+a.ld_lbl_a('frog_x')
+a.jp('hh_did_hop')
+
+a.label('hh_hop_up')
+a.ld_a_lbl('frog_y')
+a.cp_n(HOP_SIZE)
+a.jp('c', 'hh_up_min')
+a.sub_n(HOP_SIZE)
+a.jp('hh_up_store')
+a.label('hh_up_min')
+a.ld_r_n('a', 2)
+a.label('hh_up_store')
+a.ld_lbl_a('frog_y')
+a.jp('hh_did_hop')
+
+a.label('hh_hop_down')
+a.ld_a_lbl('frog_y')
+a.add_a_n(HOP_SIZE)
+a.cp_n(59)
+a.jp('c', 'hh_down_store')
+a.ld_r_n('a', 58)
+a.label('hh_down_store')
+a.ld_lbl_a('frog_y')
+
+a.label('hh_did_hop')
+a.ld_r_n('a', HOP_COOLDOWN)
+a.ld_lbl_a('hop_cd')
+
+a.label('hh_store_prev')
+a.ld_a_lbl('joy_xdir')
+a.ld_lbl_a('prev_joy_x')
+a.ld_a_lbl('joy_ydir')
+a.ld_lbl_a('prev_joy_y')
+a.ret()
+
+a.label('update_obstacles')
+a.ld_a_lbl('screen')
+a.or_r('a')
+a.jp('z', 'uo_road')
+a.jp('update_river_obstacles')
+a.label('uo_road')
+a.jp('update_road_obstacles')
+
+a.label('update_road_obstacles')
+for lane in ROAD_LANES:
     idx = lane['idx']
-    moved = lane_move_label(idx)
-    counter = lane_counter_label(idx)
-    speed = lane_speed_label(idx)
-    done = f'lane{idx}_move_done'
-    moved_now = f'lane{idx}_do_move'
-
-    a.xor_r('a')
-    a.ld_lbl_a(moved)
-    a.ld_a_lbl(counter)
-    a.inc_r('a')
-    a.ld_lbl_a(counter)
-    a.ld_r_r('b', 'a')
-    a.ld_a_lbl(speed)
-    a.cp_r('b')
-    a.jp('z', moved_now)
-    a.jp(done)
-
-    a.label(moved_now)
-    a.xor_r('a')
-    a.ld_lbl_a(counter)
-    a.ld_r_n('a', 1 if lane['direction'] == 'right' else 0xFF)
-    a.ld_lbl_a(moved)
-
     for obj_idx in range(3):
-        lbl = lane_x_label(idx, obj_idx)
-        if lane['direction'] == 'right':
-            a.ld_a_lbl(lbl)
+        emit_draw_wrapped_rect(lane_x_label(idx, obj_idx), lane['y'], lane['w'], lane['bg'], f'ero_{idx}_{obj_idx}')
+    do_move = f'uro_move_{idx}'
+    done = f'uro_done_{idx}'
+    a.xor_r('a')
+    a.ld_lbl_a(lane_move_label(idx))
+    a.ld_a_lbl(lane_counter_label(idx))
+    a.inc_r('a')
+    a.ld_lbl_a(lane_counter_label(idx))
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl(lane_speed_label(idx))
+    a.cp_r('b')
+    a.jp('z', do_move)
+    a.jp(done)
+    a.label(do_move)
+    a.xor_r('a')
+    a.ld_lbl_a(lane_counter_label(idx))
+    a.ld_r_n('a', 1 if lane['dir'] == 'right' else 0xFF)
+    a.ld_lbl_a(lane_move_label(idx))
+    for obj_idx in range(3):
+        xlbl = lane_x_label(idx, obj_idx)
+        if lane['dir'] == 'right':
+            wrap = f'uro_wrap_{idx}_{obj_idx}'
+            cont = f'uro_cont_{idx}_{obj_idx}'
+            a.ld_a_lbl(xlbl)
             a.inc_r('a')
             a.cp_n(64)
-            store = f'lane{idx}_obj{obj_idx}_store'
-            wrap = f'lane{idx}_obj{obj_idx}_wrap'
             a.jp('z', wrap)
-            a.label(store)
-            a.ld_lbl_a(lbl)
-            cont = f'lane{idx}_obj{obj_idx}_cont'
+            a.ld_lbl_a(xlbl)
             a.jp(cont)
             a.label(wrap)
             a.xor_r('a')
-            a.ld_lbl_a(lbl)
+            a.ld_lbl_a(xlbl)
             a.label(cont)
         else:
-            not_zero = f'lane{idx}_obj{obj_idx}_not_zero'
-            done_obj = f'lane{idx}_obj{obj_idx}_done'
-            a.ld_a_lbl(lbl)
+            decit = f'uro_dec_{idx}_{obj_idx}'
+            cont = f'uro_cont_{idx}_{obj_idx}'
+            a.ld_a_lbl(xlbl)
             a.or_r('a')
-            a.jp('nz', not_zero)
+            a.jp('nz', decit)
             a.ld_r_n('a', 63)
-            a.ld_lbl_a(lbl)
-            a.jp(done_obj)
-            a.label(not_zero)
+            a.ld_lbl_a(xlbl)
+            a.jp(cont)
+            a.label(decit)
             a.dec_r('a')
-            a.ld_lbl_a(lbl)
-            a.label(done_obj)
-
+            a.ld_lbl_a(xlbl)
+            a.label(cont)
     a.label(done)
+    for obj_idx in range(3):
+        emit_draw_wrapped_rect(lane_x_label(idx, obj_idx), lane['y'], lane['w'], lane['color'], f'dro_{idx}_{obj_idx}')
 a.ret()
 
-a.label('move_frog')
-a.call('ride_frog')
-a.ld_a_lbl('hop_cooldown')
-a.or_r('a')
-a.jp('z', 'mf_cd_done')
-a.dec_r('a')
-a.ld_lbl_a('hop_cooldown')
-a.label('mf_cd_done')
-
-a.xor_r('a')
-a.ld_lbl_a('joy_dir')
-a.ld_a_lbl('in_x')
-a.cp_n(128)
-a.jp('nc', 'mf_left')
-a.or_r('a')
-a.jp('nz', 'mf_right')
-a.ld_a_lbl('in_y')
-a.cp_n(128)
-a.jp('nc', 'mf_down')
-a.or_r('a')
-a.jp('nz', 'mf_up')
-a.xor_r('a')
-a.ld_lbl_a('joy_prev')
-a.ret()
-
-a.label('mf_left')
-a.ld_r_n('a', DIR_LEFT)
-a.ld_lbl_a('joy_dir')
-a.jp('mf_try_hop')
-
-a.label('mf_right')
-a.ld_r_n('a', DIR_RIGHT)
-a.ld_lbl_a('joy_dir')
-a.jp('mf_try_hop')
-
-a.label('mf_up')
-a.ld_r_n('a', DIR_UP)
-a.ld_lbl_a('joy_dir')
-a.jp('mf_try_hop')
-
-a.label('mf_down')
-a.ld_r_n('a', DIR_DOWN)
-a.ld_lbl_a('joy_dir')
-
-a.label('mf_try_hop')
-a.ld_a_lbl('joy_prev')
-a.or_r('a')
-a.ret_cc('nz')
-a.ld_a_lbl('hop_cooldown')
-a.or_r('a')
-a.ret_cc('nz')
-a.ld_a_lbl('joy_dir')
-a.ld_lbl_a('joy_prev')
-a.ld_r_n('a', 8)
-a.ld_lbl_a('hop_cooldown')
-a.ld_a_lbl('joy_dir')
-a.cp_n(DIR_LEFT)
-a.jp('z', 'mf_hop_left')
-a.cp_n(DIR_RIGHT)
-a.jp('z', 'mf_hop_right')
-a.cp_n(DIR_UP)
-a.jp('z', 'mf_hop_up')
-a.jp('mf_hop_down')
-
-a.label('mf_hop_left')
-a.ld_a_lbl('frog_x')
-a.cp_n(4)
-a.ret_cc('c')
-a.sub_n(4)
-a.ld_lbl_a('frog_x')
-a.ret()
-
-a.label('mf_hop_right')
-a.ld_a_lbl('frog_x')
-a.add_a_n(4)
-a.cp_n(63)
-a.jp('c', 'mf_hr_store')
-a.ld_r_n('a', 62)
-a.label('mf_hr_store')
-a.ld_lbl_a('frog_x')
-a.ret()
-
-a.label('mf_hop_up')
-a.ld_a_lbl('frog_y')
-a.cp_n(4)
-a.ret_cc('c')
-a.sub_n(4)
-a.ld_lbl_a('frog_y')
-a.ret()
-
-a.label('mf_hop_down')
-a.ld_a_lbl('frog_y')
-a.add_a_n(4)
-a.cp_n(61)
-a.jp('c', 'mf_hd_store')
-a.ld_r_n('a', 60)
-a.label('mf_hd_store')
-a.ld_lbl_a('frog_y')
-a.ret()
-
-a.label('ride_frog')
-a.ld_a_lbl('frog_y')
-for lane in RIVER_LANES:
-    a.cp_n(lane['y'])
-    a.jp('z', f'ride_lane_{lane["idx"]}')
-a.ret()
-
+a.label('update_river_obstacles')
 for lane in RIVER_LANES:
     idx = lane['idx']
-    hit = f'ride_lane_{idx}_hit'
-    done = f'ride_lane_{idx}_done'
-    left = f'ride_lane_{idx}_left'
-    store = f'ride_lane_{idx}_store'
-    a.label(f'ride_lane_{idx}')
+    for obj_idx in range(3):
+        emit_draw_wrapped_rect(lane_x_label(idx, obj_idx), lane['y'], lane['w'], lane['bg'], f'erv_{idx}_{obj_idx}')
+    do_move = f'urv_move_{idx}'
+    done = f'urv_done_{idx}'
+    a.xor_r('a')
+    a.ld_lbl_a(lane_move_label(idx))
+    a.ld_a_lbl(lane_counter_label(idx))
+    a.inc_r('a')
+    a.ld_lbl_a(lane_counter_label(idx))
+    a.ld_r_r('b', 'a')
+    a.ld_a_lbl(lane_speed_label(idx))
+    a.cp_r('b')
+    a.jp('z', do_move)
+    a.jp(done)
+    a.label(do_move)
+    a.xor_r('a')
+    a.ld_lbl_a(lane_counter_label(idx))
+    a.ld_r_n('a', 1 if lane['dir'] == 'right' else 0xFF)
+    a.ld_lbl_a(lane_move_label(idx))
+    for obj_idx in range(3):
+        xlbl = lane_x_label(idx, obj_idx)
+        if lane['dir'] == 'right':
+            wrap = f'urv_wrap_{idx}_{obj_idx}'
+            cont = f'urv_cont_{idx}_{obj_idx}'
+            a.ld_a_lbl(xlbl)
+            a.inc_r('a')
+            a.cp_n(64)
+            a.jp('z', wrap)
+            a.ld_lbl_a(xlbl)
+            a.jp(cont)
+            a.label(wrap)
+            a.xor_r('a')
+            a.ld_lbl_a(xlbl)
+            a.label(cont)
+        else:
+            decit = f'urv_dec_{idx}_{obj_idx}'
+            cont = f'urv_cont_{idx}_{obj_idx}'
+            a.ld_a_lbl(xlbl)
+            a.or_r('a')
+            a.jp('nz', decit)
+            a.ld_r_n('a', 63)
+            a.ld_lbl_a(xlbl)
+            a.jp(cont)
+            a.label(decit)
+            a.dec_r('a')
+            a.ld_lbl_a(xlbl)
+            a.label(cont)
+    a.label(done)
+    for obj_idx in range(3):
+        emit_draw_wrapped_rect(lane_x_label(idx, obj_idx), lane['y'], lane['w'], lane['color'], f'drv_{idx}_{obj_idx}')
+a.ret()
+
+a.label('check_state')
+a.ld_a_lbl('screen')
+a.or_r('a')
+a.jp('z', 'check_road_state')
+a.jp('check_river_state')
+
+a.label('check_road_state')
+a.ld_a_lbl('frog_y')
+a.cp_n(24)
+a.jp('c', 'road_to_river')
+a.cp_n(56)
+a.ret_cc('nc')
+for lane in ROAD_LANES:
+    idx = lane['idx']
+    next_lane = f'cr_next_{idx}'
+    hit = f'cr_hit_{idx}'
+    a.ld_a_lbl('frog_y')
+    a.cp_n(lane['y'])
+    a.jp('c', next_lane)
+    a.cp_n(lane['y'] + 8)
+    a.jp('nc', next_lane)
+    for obj_idx in range(3):
+        emit_overlap_jump(lane_x_label(idx, obj_idx), lane['w'], hit, f'cr_{idx}_{obj_idx}')
+    a.ret()
+    a.label(hit)
+    a.jp('lose_life')
+    a.label(next_lane)
+a.ret()
+
+a.label('road_to_river')
+a.jp('enter_river')
+
+a.label('check_river_state')
+a.ld_a_lbl('frog_y')
+a.cp_n(56)
+a.ret_cc('nc')
+a.cp_n(24)
+a.jp('c', 'river_top_zone')
+for lane in RIVER_LANES:
+    idx = lane['idx']
+    next_lane = f'cv_next_{idx}'
+    on_log = f'cv_onlog_{idx}'
+    a.ld_a_lbl('frog_y')
+    a.cp_n(lane['y'])
+    a.jp('c', next_lane)
+    a.cp_n(lane['y'] + 8)
+    a.jp('nc', next_lane)
+    for obj_idx in range(3):
+        emit_overlap_jump(lane_x_label(idx, obj_idx), lane['w'], on_log, f'cv_{idx}_{obj_idx}')
+    a.jp('lose_life')
+    a.label(on_log)
     a.ld_a_lbl(lane_move_label(idx))
     a.or_r('a')
     a.ret_cc('z')
-    for obj_idx in range(3):
-        emit_obstacle_overlap(lane_x_label(idx, obj_idx), lane['width'], hit, f'ride_lane_{idx}_obj{obj_idx}')
-    a.ret()
-    a.label(hit)
-    a.ld_a_lbl(lane_move_label(idx))
-    a.cp_n(0xFF)
-    a.jp('z', left)
-    a.ld_a_lbl('frog_x')
-    a.cp_n(62)
-    a.jp('nc', 'lose_life')
-    a.inc_r('a')
-    a.label(store)
-    a.ld_lbl_a('frog_x')
-    a.ret()
-    a.label(left)
-    a.ld_a_lbl('frog_x')
-    a.or_r('a')
-    a.jp('z', 'lose_life')
-    a.dec_r('a')
-    a.ld_lbl_a('frog_x')
-    a.ret()
-    a.label(done)
+    if lane['dir'] == 'right':
+        a.ld_a_lbl('frog_x')
+        a.cp_n(60)
+        a.jp('z', 'lose_life')
+        a.inc_r('a')
+        a.ld_lbl_a('frog_x')
+        a.ret()
+    else:
+        a.ld_a_lbl('frog_x')
+        a.or_r('a')
+        a.jp('z', 'lose_life')
+        a.dec_r('a')
+        a.ld_lbl_a('frog_x')
+        a.ret()
+    a.label(next_lane)
+a.jp('lose_life')
 
-a.label('check_collisions')
+a.label('river_top_zone')
 a.ld_a_lbl('frog_y')
-a.cp_n(24)
-a.jp('c', 'check_homes')
-for lane in LANES:
-    a.cp_n(lane['y'])
-    a.jp('z', f'check_lane_{lane["idx"]}')
+a.cp_n(12)
+a.jp('c', 'river_home_check')
 a.ret()
 
-for lane in LANES:
-    idx = lane['idx']
-    hit = f'check_lane_{idx}_hit'
-    done = f'check_lane_{idx}_done'
-    a.label(f'check_lane_{idx}')
-    for obj_idx in range(3):
-        emit_obstacle_overlap(lane_x_label(idx, obj_idx), lane['width'], hit, f'check_lane_{idx}_obj{obj_idx}')
-    if lane['kind'] == 'road':
-        a.ret()
-    else:
-        a.jp('lose_life')
-    a.label(hit)
-    if lane['kind'] == 'road':
-        a.jp('lose_life')
-    else:
-        a.ret()
-    a.label(done)
-
-a.label('check_homes')
-for idx, hx in enumerate(HOME_XS):
-    taken = f'home_{idx}_taken'
-    next_lbl = f'home_{idx}_next'
-    fit = f'home_{idx}_fit'
+a.label('river_home_check')
+for i, x in enumerate(HOME_XS):
+    next_slot = f'rh_next_{i}'
+    try_slot = f'rh_try_{i}'
+    filled = home_label(i)
     a.ld_a_lbl('frog_x')
-    a.add_a_n(2)
-    a.cp_n(hx)
-    a.jp('c', next_lbl)
-    a.ld_a_lbl('frog_x')
-    a.cp_n(hx + HOME_W)
-    a.jp('nc', next_lbl)
-    a.label(fit)
-    a.ld_a_lbl(home_label(idx))
+    a.cp_n(x)
+    a.jp('c', next_slot)
+    a.cp_n(x + HOME_W)
+    a.jp('c', try_slot)
+    a.jp(next_slot)
+    a.label(try_slot)
+    a.ld_a_lbl(filled)
     a.or_r('a')
     a.jp('nz', 'lose_life')
     a.ld_r_n('a', 1)
-    a.ld_lbl_a(home_label(idx))
+    a.ld_lbl_a(filled)
     a.ld_a_lbl('homes_filled')
     a.inc_r('a')
     a.ld_lbl_a('homes_filled')
+    a.ld_a_lbl('score')
+    a.inc_r('a')
+    a.ld_lbl_a('score')
+    a.call('flash_success')
+    a.ld_a_lbl('homes_filled')
     a.cp_n(4)
-    a.jp('z', 'level_complete')
-    a.jp('reset_round')
-    a.label(taken)
-    a.jp('lose_life')
-    a.label(next_lbl)
+    a.call('z', 'next_level')
+    a.jp('enter_road')
+    a.label(next_slot)
 a.jp('lose_life')
 
-a.label('level_complete')
+a.label('next_level')
 a.ld_a_lbl('level')
 a.inc_r('a')
 a.ld_lbl_a('level')
-a.call('speed_up_lanes')
 a.call('clear_homes')
-a.jp('reset_round')
-
-a.label('speed_up_lanes')
-for lane in LANES:
-    skip = f'speed_skip_{lane["idx"]}'
-    a.ld_a_lbl(lane_speed_label(lane['idx']))
-    a.cp_n(1)
-    a.jp('z', skip)
+for lane in ALL_LANES:
+    idx = lane['idx']
+    skip = f'nl_skip_{idx}'
+    a.ld_a_lbl(lane_speed_label(idx))
+    a.cp_n(2)
+    a.jp('c', skip)
     a.dec_r('a')
-    a.ld_lbl_a(lane_speed_label(lane['idx']))
+    a.ld_lbl_a(lane_speed_label(idx))
     a.label(skip)
+a.ret()
+
+a.label('flash_success')
+a.ld_r_n('c', BRIGHT_GREEN)
+a.ld_r_n('b', 4)
+a.call('flash_color')
 a.ret()
 
 a.label('lose_life')
+a.ld_r_n('c', BRIGHT_RED)
+a.ld_r_n('b', 8)
+a.call('flash_color')
 a.ld_a_lbl('lives')
-a.or_r('a')
-a.jp('z', 'exit_to_cpm')
 a.dec_r('a')
 a.ld_lbl_a('lives')
-a.jp('z', 'exit_to_cpm')
-a.jp('reset_round')
-
-a.label('draw_ui')
-hline_imm(0, 2, 64, BLACK)
-hline_imm(0, 3, 64, BLACK)
-a.ld_a_lbl('timer_value')
 a.or_r('a')
-a.jp('z', 'du_timer_done')
-a.ld_r_n('d', 2)
-a.ld_r_n('e', 2)
-a.ld_r_r('b', 'a')
-a.ld_r_n('c', BRIGHT_YELLOW)
-a.call('hline')
-a.ld_r_n('d', 2)
-a.ld_r_n('e', 3)
-a.ld_a_lbl('timer_value')
-a.ld_r_r('b', 'a')
-a.ld_r_n('c', BRIGHT_YELLOW)
-a.call('hline')
-a.label('du_timer_done')
-
-hline_imm(0, 8, 16, BLACK)
-hline_imm(0, 9, 16, BLACK)
-a.ld_a_lbl('lives')
+a.jp('z', 'game_over')
+a.ld_a_lbl('screen')
 a.or_r('a')
-a.jp('z', 'du_lives_done')
-for idx in range(3):
-    skip = f'du_life_{idx}_skip'
-    a.ld_a_lbl('lives')
-    a.cp_n(idx + 1)
-    a.jp('c', skip)
-    rect_imm(2 + idx * 4, 8, 2, 2, BRIGHT_GREEN)
-    a.label(skip)
-a.label('du_lives_done')
-a.call('draw_homes')
+a.jp('z', 'enter_road')
+a.jp('enter_river')
+
+a.label('flash_color')
+a.push('bc')
+a.push('bc')
+a.call('fill_screen')
+a.pop('bc')
+a.label('fc_wait')
+a.call('vsync')
+a.djnz('fc_wait')
+a.pop('bc')
 a.ret()
 
-a.label('draw_homes')
-for idx, hx in enumerate(HOME_XS):
-    skip = f'draw_home_{idx}_skip'
-    a.ld_a_lbl(home_label(idx))
-    a.or_r('a')
-    a.jp('z', skip)
-    rect_imm(hx, 20, HOME_W, 4, BRIGHT_GREEN)
-    a.jp(f'draw_home_{idx}_done')
-    a.label(skip)
-    rect_imm(hx, 20, HOME_W, 4, GREEN)
-    a.label(f'draw_home_{idx}_done')
-a.ret()
-
-a.label('draw_lanes')
-for lane in LANES:
-    rect_imm(0, lane['y'], 64, 4, lane['bg'])
-    for obj_idx in range(3):
-        emit_draw_wrapped_obstacle(lane_x_label(lane['idx'], obj_idx), lane, f'draw_lane_{lane["idx"]}_obj{obj_idx}')
-a.ret()
-
-a.label('draw_frog')
-a.ld_a_lbl('frog_x')
-a.ld_lbl_a('frog_prev_x')
-a.ld_r_r('d', 'a')
-a.ld_a_lbl('frog_y')
-a.ld_lbl_a('frog_prev_y')
-a.ld_r_r('e', 'a')
-a.ld_r_n('b', 2)
-a.ld_r_n('c', FROG_COLOR)
-a.call('hline')
-a.inc_r('e')
-a.ld_r_n('b', 2)
-a.ld_r_n('c', FROG_COLOR)
-a.call('hline')
-a.ret()
-
-a.label('erase_frog')
-a.ld_a_lbl('frog_prev_y')
-a.cp_n(24)
-a.jp('c', 'ef_black')
-a.cp_n(40)
-a.jp('c', 'ef_blue')
-a.cp_n(44)
-a.jp('c', 'ef_green')
-a.cp_n(60)
-a.jp('c', 'ef_black')
-a.jp('ef_green')
-
-a.label('ef_blue')
-a.ld_r_n('c', BLUE)
-a.jp('ef_draw')
-
-a.label('ef_green')
-a.ld_r_n('c', GREEN)
-a.jp('ef_draw')
-
-a.label('ef_black')
-a.ld_r_n('c', BLACK)
-
-a.label('ef_draw')
-a.ld_a_lbl('frog_prev_x')
-a.ld_r_r('d', 'a')
-a.ld_a_lbl('frog_prev_y')
-a.ld_r_r('e', 'a')
-a.ld_r_n('b', 2)
-a.call('hline')
-a.inc_r('e')
-a.ld_r_n('b', 2)
-a.call('hline')
-a.ret()
-
-a.label('rect4')
+a.label('fill_screen')
 a.push('bc')
 a.push('de')
+a.ld_r_n('e', 0)
+a.label('fs_row')
+a.ld_r_n('d', 0)
+a.ld_r_n('b', 64)
 a.call('hline')
 a.inc_r('e')
-a.call('hline')
-a.inc_r('e')
-a.call('hline')
-a.inc_r('e')
-a.call('hline')
+a.ld_r_r('a', 'e')
+a.cp_n(64)
+a.jp('c', 'fs_row')
 a.pop('de')
 a.pop('bc')
+a.ret()
+
+a.label('fill_band')
+a.push('bc')
+a.push('de')
+a.label('fb_row')
+a.push('bc')
+a.ld_r_n('d', 0)
+a.ld_r_n('b', 64)
+a.call('hline')
+a.pop('bc')
+a.inc_r('e')
+a.djnz('fb_row')
+a.pop('de')
+a.pop('bc')
+a.ret()
+
+a.label('game_over')
+a.call('clear_fb')
+a.ld_r_n('c', BLACK)
+a.call('fill_screen')
+a.call('draw_game_over_x')
+a.ld_r_n('b', 120)
+a.label('go_wait')
+a.call('vsync')
+a.djnz('go_wait')
+a.jp('init_game')
+
+a.label('draw_game_over_x')
+a.ld_r_n('b', 48)
+a.ld_r_n('d', 8)
+a.label('dgx_loop')
+a.ld_r_r('e', 'd')
+a.ld_r_n('c', BRIGHT_RED)
+a.call('plot')
+a.ld_r_r('e', 'd')
+a.inc_r('e')
+a.call('plot')
+a.ld_r_r('e', 'd')
+a.dec_r('e')
+a.call('plot')
+a.ld_r_n('a', 63)
+a.sub_r('d')
+a.ld_r_r('e', 'a')
+a.ld_r_n('c', BRIGHT_RED)
+a.call('plot')
+a.ld_r_n('a', 63)
+a.sub_r('d')
+a.ld_r_r('e', 'a')
+a.inc_r('e')
+a.call('plot')
+a.ld_r_n('a', 63)
+a.sub_r('d')
+a.ld_r_r('e', 'a')
+a.dec_r('e')
+a.call('plot')
+a.inc_r('d')
+a.djnz('dgx_loop')
 a.ret()
 
 a.label('exit_to_cpm')
@@ -900,85 +1044,38 @@ a.ld_r_n('(hl)', 0)
 a.ldir()
 a.ret()
 
-# plot: pixel at D=x(0-63), E=y(0-63), color C. Clobbers A,HL
+# plot: pixel at D=x(0-63), E=y(0-63), color C. Preserves BC, DE.
 a.label('plot')
 a.push('bc')
 a.push('de')
-
-a.ld_r_r('a', 'd')
-a.cp_n(64)
-a.jp('nc', 'pl_out')
-a.ld_r_r('a', 'e')
-a.cp_n(64)
-a.jp('nc', 'pl_out')
-
-a.ld_rp_nn('hl', FB_BASE)
-
-a.ld_r_r('a', 'd')
-a.and_n(0x20)
-a.jr('z', 'pl_lx')
-a.push('bc')
-a.ld_rp_nn('bc', 512)
-a.add_hl_rp('bc')
-a.pop('bc')
+a.ld_r_r('a', 'd'); a.cp_n(64); a.jp('nc', 'pl_out')
+a.ld_r_r('a', 'e'); a.cp_n(64); a.jp('nc', 'pl_out')
+a.ld_rp_nn('hl', 0x2000)
+a.ld_r_r('a', 'd'); a.and_n(0x20); a.jr('z', 'pl_lx')
+a.push('bc'); a.ld_rp_nn('bc', 512); a.add_hl_rp('bc'); a.pop('bc')
 a.label('pl_lx')
-
-a.ld_r_r('a', 'e')
-a.and_n(0x20)
-a.jr('z', 'pl_ly')
-a.push('bc')
-a.ld_rp_nn('bc', 1024)
-a.add_hl_rp('bc')
-a.pop('bc')
+a.ld_r_r('a', 'e'); a.and_n(0x20); a.jr('z', 'pl_ly')
+a.push('bc'); a.ld_rp_nn('bc', 1024); a.add_hl_rp('bc'); a.pop('bc')
 a.label('pl_ly')
-
-a.ld_r_r('a', 'd')
-a.and_n(0x1F)
-a.ld_r_r('d', 'a')
-a.ld_r_r('a', 'e')
-a.and_n(0x1F)
-
-a.push('de')
-a.ld_r_r('e', 'a')
-a.ld_r_n('d', 0)
-a.sla('e'); a.rl('d')
-a.sla('e'); a.rl('d')
-a.sla('e'); a.rl('d')
-a.sla('e'); a.rl('d')
-a.add_hl_rp('de')
-a.pop('de')
-
-a.ld_r_r('a', 'd')
-a.srl('a')
-a.push('de')
-a.ld_r_r('e', 'a')
-a.ld_r_n('d', 0)
-a.add_hl_rp('de')
-a.pop('de')
-
-a.ld_r_r('a', 'd')
-a.and_n(1)
-a.jr('nz', 'pl_hi')
-
-a.ld_r_r('a', '(hl)')
-a.and_n(0xF0)
-a.or_r('c')
-a.ld_r_r('(hl)', 'a')
+a.ld_r_r('a', 'd'); a.and_n(0x1F); a.ld_r_r('d', 'a')
+a.ld_r_r('a', 'e'); a.and_n(0x1F)
+a.push('de'); a.ld_r_r('e', 'a'); a.ld_r_n('d', 0)
+a.sla('e'); a.rl('d'); a.sla('e'); a.rl('d')
+a.sla('e'); a.rl('d'); a.sla('e'); a.rl('d')
+a.add_hl_rp('de'); a.pop('de')
+a.ld_r_r('a', 'd'); a.srl('a')
+a.push('de'); a.ld_r_r('e', 'a'); a.ld_r_n('d', 0)
+a.add_hl_rp('de'); a.pop('de')
+a.ld_r_r('a', 'd'); a.and_n(1); a.jr('nz', 'pl_hi')
+a.ld_r_r('a', '(hl)'); a.and_n(0xF0); a.or_r('c'); a.ld_r_r('(hl)', 'a')
 a.jr('pl_out')
-
 a.label('pl_hi')
 a.ld_r_r('a', 'c')
 a.sla('a'); a.sla('a'); a.sla('a'); a.sla('a')
 a.ld_r_r('b', 'a')
-a.ld_r_r('a', '(hl)')
-a.and_n(0x0F)
-a.or_r('b')
-a.ld_r_r('(hl)', 'a')
-
+a.ld_r_r('a', '(hl)'); a.and_n(0x0F); a.or_r('b'); a.ld_r_r('(hl)', 'a')
 a.label('pl_out')
-a.pop('de')
-a.pop('bc')
-a.ret()
+a.pop('de'); a.pop('bc'); a.ret()
 
 a.label('hline')
 a.push('bc')
@@ -991,33 +1088,67 @@ a.pop('de')
 a.pop('bc')
 a.ret()
 
+a.label('rect4')
+a.push('bc')
+a.push('de')
+a.call('hline')
+a.inc_r('e')
+a.call('hline')
+a.inc_r('e')
+a.call('hline')
+a.inc_r('e')
+a.call('hline')
+a.pop('de')
+a.pop('bc')
+a.ret()
+
+a.label('rect6')
+a.push('bc')
+a.push('de')
+a.call('hline')
+a.inc_r('e')
+a.call('hline')
+a.inc_r('e')
+a.call('hline')
+a.inc_r('e')
+a.call('hline')
+a.inc_r('e')
+a.call('hline')
+a.inc_r('e')
+a.call('hline')
+a.pop('de')
+a.pop('bc')
+a.ret()
+
 # ─── Data ──────────────────────────────────────────────────────────────────────
 a.label('in_btn'); a.db(0xFF)
 a.label('in_x'); a.db(0)
 a.label('in_y'); a.db(0)
-a.label('joy_prev'); a.db(0)
-a.label('joy_dir'); a.db(0)
-a.label('hop_cooldown'); a.db(0)
+a.label('screen'); a.db(0)
 a.label('frog_x'); a.db(FROG_START_X)
 a.label('frog_y'); a.db(FROG_START_Y)
-a.label('frog_prev_x'); a.db(FROG_START_X)
-a.label('frog_prev_y'); a.db(FROG_START_Y)
+a.label('prev_joy_x'); a.db(0)
+a.label('prev_joy_y'); a.db(0)
+a.label('joy_xdir'); a.db(0)
+a.label('joy_ydir'); a.db(0)
+a.label('hop_cd'); a.db(0)
 a.label('lives'); a.db(3)
 a.label('level'); a.db(1)
-a.label('timer_value'); a.db(TIMER_RESET)
-a.label('timer_tick'); a.db(TIMER_TICK_RESET)
+a.label('score'); a.db(0)
 a.label('homes_filled'); a.db(0)
-for idx in range(4):
-    a.label(home_label(idx)); a.db(0)
-for lane in LANES:
+for i in range(4):
+    a.label(home_label(i)); a.db(0)
+for lane in ALL_LANES:
+    for obj_idx, xpos in enumerate(lane['xs']):
+        a.label(lane_x_label(lane['idx'], obj_idx)); a.db(xpos)
     a.label(lane_speed_label(lane['idx'])); a.db(lane['speed'])
     a.label(lane_counter_label(lane['idx'])); a.db(0)
     a.label(lane_move_label(lane['idx'])); a.db(0)
-    for obj_idx, xpos in enumerate(lane['xs']):
-        a.label(lane_x_label(lane['idx'], obj_idx)); a.db(xpos)
 
 # ─── Save ──────────────────────────────────────────────────────────────────────
 out = os.path.join(os.path.dirname(__file__), '..', 'web', 'public', 'FROGGER.COM')
-a.save(out)
 out2 = os.path.join(os.path.dirname(__file__), '..', 'games', 'FROGGER.COM')
+os.makedirs(os.path.dirname(out), exist_ok=True)
+os.makedirs(os.path.dirname(out2), exist_ok=True)
+a.save(out)
 a.save(out2)
