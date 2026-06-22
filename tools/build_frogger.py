@@ -195,10 +195,10 @@ ROAD_LANES = [
 ]
 
 RIVER_LANES = [
-    dict(idx=5, y=48, w=14, color=YELLOW, bg=BLUE,  dir='right', speed=4, xs=[0, 22, 44]),
-    dict(idx=6, y=40, w=12, color=YELLOW, bg=BLUE,  dir='left',  speed=3, xs=[8, 30, 52]),
-    dict(idx=7, y=32, w=12, color=YELLOW, bg=BLUE,  dir='right', speed=4, xs=[4, 26, 48]),
-    dict(idx=8, y=24, w=10, color=GREEN,  bg=BLUE,  dir='left',  speed=3, xs=[6, 28, 50]),
+    dict(idx=5, y=48, w=10, color=YELLOW, bg=BLUE,  dir='right', speed=5, xs=[0, 32]),
+    dict(idx=6, y=40, w=10, color=YELLOW, bg=BLUE,  dir='left',  speed=4, xs=[10, 42]),
+    dict(idx=7, y=32, w=10, color=YELLOW, bg=BLUE,  dir='right', speed=5, xs=[5, 37]),
+    dict(idx=8, y=24, w=10, color=GREEN,  bg=BLUE,  dir='left',  speed=4, xs=[8, 40]),
 ]
 
 ALL_LANES = ROAD_LANES + RIVER_LANES
@@ -518,14 +518,8 @@ a.ret()
 
 a.label('draw_river_lanes')
 for lane in RIVER_LANES:
-    for obj_idx in range(3):
+    for obj_idx in range(2):
         emit_draw_wrapped_rect(lane_x_label(lane['idx'], obj_idx), lane['y'], lane['w'], lane['color'], f'dvl_{lane["idx"]}_{obj_idx}')
-        a.ld_a_lbl(lane_x_label(lane['idx'], obj_idx))
-        a.ld_r_r('d', 'a')
-        a.ld_r_n('e', lane['y'])
-        a.ld_r_n('b', lane['w'])
-        a.ld_r_n('c', GREEN if lane['color'] != GREEN else YELLOW)
-        a.call('draw_log_detail')
 a.ret()
 
 a.label('erase_frog')
@@ -793,12 +787,9 @@ a.ret()
 a.label('update_river_obstacles')
 for lane in RIVER_LANES:
     idx = lane['idx']
-    for obj_idx in range(3):
-        emit_draw_wrapped_rect(lane_x_label(idx, obj_idx), lane['y'], lane['w'], lane['bg'], f'erv_{idx}_{obj_idx}')
     do_move = f'urv_move_{idx}'
     done = f'urv_done_{idx}'
-    a.xor_r('a')
-    a.ld_lbl_a(lane_move_label(idx))
+    # Check if lane should move this frame
     a.ld_a_lbl(lane_counter_label(idx))
     a.inc_r('a')
     a.ld_lbl_a(lane_counter_label(idx))
@@ -806,13 +797,20 @@ for lane in RIVER_LANES:
     a.ld_a_lbl(lane_speed_label(idx))
     a.cp_r('b')
     a.jp('z', do_move)
+    # Not moving: clear move flag and skip
+    a.xor_r('a')
+    a.ld_lbl_a(lane_move_label(idx))
     a.jp(done)
     a.label(do_move)
     a.xor_r('a')
     a.ld_lbl_a(lane_counter_label(idx))
     a.ld_r_n('a', 1 if lane['dir'] == 'right' else 0xFF)
     a.ld_lbl_a(lane_move_label(idx))
-    for obj_idx in range(3):
+    # Erase old positions
+    for obj_idx in range(2):
+        emit_draw_wrapped_rect(lane_x_label(idx, obj_idx), lane['y'], lane['w'], lane['bg'], f'erv_{idx}_{obj_idx}')
+    # Move positions
+    for obj_idx in range(2):
         xlbl = lane_x_label(idx, obj_idx)
         if lane['dir'] == 'right':
             wrap = f'urv_wrap_{idx}_{obj_idx}'
@@ -840,15 +838,10 @@ for lane in RIVER_LANES:
             a.dec_r('a')
             a.ld_lbl_a(xlbl)
             a.label(cont)
-    a.label(done)
-    for obj_idx in range(3):
+    # Draw new positions
+    for obj_idx in range(2):
         emit_draw_wrapped_rect(lane_x_label(idx, obj_idx), lane['y'], lane['w'], lane['color'], f'drv_{idx}_{obj_idx}')
-        a.ld_a_lbl(lane_x_label(idx, obj_idx))
-        a.ld_r_r('d', 'a')
-        a.ld_r_n('e', lane['y'])
-        a.ld_r_n('b', lane['w'])
-        a.ld_r_n('c', GREEN if lane['color'] != GREEN else YELLOW)
-        a.call('draw_log_detail')
+    a.label(done)
 a.ret()
 
 a.label('check_state')
@@ -898,7 +891,7 @@ for lane in RIVER_LANES:
     a.jp('c', next_lane)
     a.cp_n(lane['y'] + 8)
     a.jp('nc', next_lane)
-    for obj_idx in range(3):
+    for obj_idx in range(2):
         emit_overlap_jump(lane_x_label(idx, obj_idx), lane['w'], on_log, f'cv_{idx}_{obj_idx}')
     a.jp('lose_life')
     a.label(on_log)
