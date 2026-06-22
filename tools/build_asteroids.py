@@ -184,10 +184,26 @@ DIR_DY = [-1, -1, 0, 1, 1, 1, 0, -1]
 BULLET_DX = [0, 2, 2, 2, 0, -2, -2, -2]
 BULLET_DY = [-2, -2, 0, 2, 2, 2, 0, -2]
 
-SHIP_OFF1_DX = [-1, -1, -1, 0, -1, 0, 1, 1]
-SHIP_OFF1_DY = [1, 0, -1, -1, -1, -1, -1, 0]
-SHIP_OFF2_DX = [1, 0, -1, -1, 1, 1, 1, 0]
-SHIP_OFF2_DY = [1, 1, 1, 0, -1, 0, 1, 1]
+# Ship shapes: 8 directions, each a list of (dx,dy) offsets from center
+# Making a clear triangle/arrow shape, roughly 5×5
+SHIP_SHAPES = [
+    # Dir 0 (N) - pointing up
+    [(0,-2), (-1,-1), (1,-1), (-2,1), (-1,1), (0,1), (1,1), (2,1), (0,0)],
+    # Dir 1 (NE) - pointing up-right
+    [(1,-2), (2,-1), (0,-1), (-1,0), (-2,1), (-1,1), (0,0), (1,0), (2,-2)],
+    # Dir 2 (E) - pointing right
+    [(2,0), (1,-1), (1,1), (-1,-2), (-1,-1), (-1,0), (-1,1), (-1,2), (0,0)],
+    # Dir 3 (SE) - pointing down-right
+    [(2,1), (1,2), (0,1), (-1,0), (-2,-1), (-1,-1), (0,0), (1,0), (2,2)],
+    # Dir 4 (S) - pointing down
+    [(0,2), (-1,1), (1,1), (-2,-1), (-1,-1), (0,-1), (1,-1), (2,-1), (0,0)],
+    # Dir 5 (SW) - pointing down-left
+    [(-1,2), (-2,1), (0,1), (1,0), (2,-1), (1,-1), (0,0), (-1,0), (-2,2)],
+    # Dir 6 (W) - pointing left
+    [(-2,0), (-1,-1), (-1,1), (1,-2), (1,-1), (1,0), (1,1), (1,2), (0,0)],
+    # Dir 7 (NW) - pointing up-left
+    [(-1,-2), (-2,-1), (0,-1), (1,0), (2,1), (1,1), (0,0), (-1,0), (-2,-2)],
+]
 
 AST_LARGE_POINTS = [
     (-1, -2), (0, -2), (1, -2),
@@ -264,49 +280,21 @@ def emit_offsets_shape(points):
 
 def emit_ship_routine(name, x_lbl, y_lbl, dir_lbl, color):
     a.label(name)
-    load_coord_pair(x_lbl, y_lbl)
     a.ld_r_n('c', color)
-    a.call('plot')
-
-    load_coord_pair(x_lbl, y_lbl)
     a.ld_a_lbl(dir_lbl)
-    a.ld_rp_label('hl', 'ship_off1_dx_table')
-    a.call('table_lookup_a')
-    a.ld_r_n('b', 0)
-    a.ld_r_r('b', 'a')
-    a.ld_r_r('a', 'd')
-    a.call('add_wrap')
-    a.ld_r_r('d', 'a')
-    a.ld_a_lbl(dir_lbl)
-    a.ld_rp_label('hl', 'ship_off1_dy_table')
-    a.call('table_lookup_a')
-    a.ld_r_n('b', 0)
-    a.ld_r_r('b', 'a')
-    a.ld_r_r('a', 'e')
-    a.call('add_wrap')
-    a.ld_r_r('e', 'a')
-    a.ld_r_n('c', color)
-    a.call('plot')
-
-    load_coord_pair(x_lbl, y_lbl)
-    a.ld_a_lbl(dir_lbl)
-    a.ld_rp_label('hl', 'ship_off2_dx_table')
-    a.call('table_lookup_a')
-    a.ld_r_n('b', 0)
-    a.ld_r_r('b', 'a')
-    a.ld_r_r('a', 'd')
-    a.call('add_wrap')
-    a.ld_r_r('d', 'a')
-    a.ld_a_lbl(dir_lbl)
-    a.ld_rp_label('hl', 'ship_off2_dy_table')
-    a.call('table_lookup_a')
-    a.ld_r_n('b', 0)
-    a.ld_r_r('b', 'a')
-    a.ld_r_r('a', 'e')
-    a.call('add_wrap')
-    a.ld_r_r('e', 'a')
-    a.ld_r_n('c', color)
-    a.call('plot')
+    # Branch to the correct direction's draw code
+    for d in range(8):
+        nxt = f'{name}_d{d+1}' if d < 7 else f'{name}_done'
+        a.cp_n(d)
+        a.jp('z', f'{name}_dir{d}')
+    a.jp(f'{name}_done')
+    for d in range(8):
+        a.label(f'{name}_dir{d}')
+        load_coord_pair(x_lbl, y_lbl)
+        for dx, dy in SHIP_SHAPES[d]:
+            emit_plot_from_de(dx, dy)
+        a.jp(f'{name}_done')
+    a.label(f'{name}_done')
     a.ret()
 
 
@@ -369,6 +357,10 @@ a.call('vsync')
 a.call('erase_ship')
 a.call('erase_bullets')
 a.call('erase_asteroids')
+# Save current position as old (for next frame's erase)
+copy_lbl('ship_x', 'ship_old_x')
+copy_lbl('ship_y', 'ship_old_y')
+copy_lbl('ship_dir', 'ship_old_dir')
 a.call('read_input')
 a.call('update_ship')
 a.call('spawn_bullet_if_requested')
@@ -730,45 +722,8 @@ a.xor_r('a')
 a.ret()
 
 a.label('check_ship_collision')
+# Just check ship center — asteroids have collision radius that accounts for ship size
 load_coord_pair('ship_x', 'ship_y')
-a.call('ship_collision_point')
-a.or_r('a')
-a.ret_cc('nz')
-
-load_coord_pair('ship_x', 'ship_y')
-a.ld_a_lbl('ship_dir')
-a.ld_rp_label('hl', 'ship_off1_dx_table')
-a.call('table_lookup_a')
-a.ld_r_r('b', 'a')
-a.ld_r_r('a', 'd')
-a.call('add_wrap')
-a.ld_r_r('d', 'a')
-a.ld_a_lbl('ship_dir')
-a.ld_rp_label('hl', 'ship_off1_dy_table')
-a.call('table_lookup_a')
-a.ld_r_r('b', 'a')
-a.ld_r_r('a', 'e')
-a.call('add_wrap')
-a.ld_r_r('e', 'a')
-a.call('ship_collision_point')
-a.or_r('a')
-a.ret_cc('nz')
-
-load_coord_pair('ship_x', 'ship_y')
-a.ld_a_lbl('ship_dir')
-a.ld_rp_label('hl', 'ship_off2_dx_table')
-a.call('table_lookup_a')
-a.ld_r_r('b', 'a')
-a.ld_r_r('a', 'd')
-a.call('add_wrap')
-a.ld_r_r('d', 'a')
-a.ld_a_lbl('ship_dir')
-a.ld_rp_label('hl', 'ship_off2_dy_table')
-a.call('table_lookup_a')
-a.ld_r_r('b', 'a')
-a.ld_r_r('a', 'e')
-a.call('add_wrap')
-a.ld_r_r('e', 'a')
 a.call('ship_collision_point')
 a.ret()
 
@@ -1177,18 +1132,6 @@ for v in BULLET_DX:
     a.db(s8(v))
 a.label('bullet_dy_table')
 for v in BULLET_DY:
-    a.db(s8(v))
-a.label('ship_off1_dx_table')
-for v in SHIP_OFF1_DX:
-    a.db(s8(v))
-a.label('ship_off1_dy_table')
-for v in SHIP_OFF1_DY:
-    a.db(s8(v))
-a.label('ship_off2_dx_table')
-for v in SHIP_OFF2_DX:
-    a.db(s8(v))
-a.label('ship_off2_dy_table')
-for v in SHIP_OFF2_DY:
     a.db(s8(v))
 
 # ─── Save ──────────────────────────────────────────────────────────────────────
