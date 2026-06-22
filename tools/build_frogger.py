@@ -180,12 +180,12 @@ FROG_START_X = 30
 FROG_START_Y = 58
 FROG_W = 4
 FROG_H = 4
-HOP_SIZE = 8
+HOP_SIZE = 6
 HOP_COOLDOWN = 6
 HOME_Y = 6
-HOME_W = 6
+HOME_W = 8
 HOME_H = 6
-HOME_XS = [6, 22, 38, 54]
+HOME_XS = [4, 18, 32, 46]
 
 ROAD_LANES = [
     dict(idx=1, y=48, w=6, color=RED,        bg=BLACK, dir='right', speed=5, xs=[0, 24, 48]),
