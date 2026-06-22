@@ -187,22 +187,22 @@ BULLET_DY = [-2, -2, 0, 2, 2, 2, 0, -2]
 # Ship shapes: 8 directions, each 7 points (dx,dy). Smaller but still visible triangle.
 # Tip + 2 mid + 4 base = 7 pixels per direction
 SHIP_SHAPES = [
-    # Dir 0 (N): solid filled triangle, tip up
-    [(0,-2), (-1,-1), (0,-1), (1,-1), (-1,0), (0,0), (1,0), (-2,1), (-1,1), (0,1), (1,1), (2,1)],
-    # Dir 1 (NE): solid filled triangle, tip upper-right
-    [(2,-2), (1,-1), (2,-1), (0,0), (1,0), (-1,1), (0,1), (-2,2), (-1,2), (0,2), (-2,1), (-1,0)],
-    # Dir 2 (E): solid filled triangle, tip right
-    [(2,0), (1,-1), (1,0), (1,1), (0,-1), (0,0), (0,1), (-1,-2), (-1,-1), (-1,0), (-1,1), (-1,2)],
-    # Dir 3 (SE): solid filled triangle, tip lower-right
-    [(2,2), (1,1), (2,1), (0,0), (1,0), (-1,-1), (0,-1), (-2,-2), (-1,-2), (0,-2), (-2,-1), (-1,0)],
-    # Dir 4 (S): solid filled triangle, tip down
-    [(0,2), (-1,1), (0,1), (1,1), (-1,0), (0,0), (1,0), (-2,-1), (-1,-1), (0,-1), (1,-1), (2,-1)],
-    # Dir 5 (SW): solid filled triangle, tip lower-left
-    [(-2,2), (-1,1), (-2,1), (0,0), (-1,0), (1,-1), (0,-1), (2,-2), (1,-2), (0,-2), (2,-1), (1,0)],
-    # Dir 6 (W): solid filled triangle, tip left
-    [(-2,0), (-1,-1), (-1,0), (-1,1), (0,-1), (0,0), (0,1), (1,-2), (1,-1), (1,0), (1,1), (1,2)],
-    # Dir 7 (NW): solid filled triangle, tip upper-left
-    [(-2,-2), (-1,-1), (-2,-1), (0,0), (-1,0), (1,1), (0,1), (2,2), (1,2), (0,2), (2,1), (1,0)],
+    # Dir 0 (N): arrow pointing up
+    [(0,-3), (-1,-2), (0,-2), (1,-2), (-1,-1), (0,-1), (1,-1), (-2,0), (-1,0), (0,0), (1,0), (2,0)],
+    # Dir 1 (NE): arrow pointing upper-right
+    [(2,-2), (1,-2), (2,-1), (0,-1), (1,-1), (1,0), (-1,0), (0,0), (-1,1), (-2,1), (0,1), (-2,2)],
+    # Dir 2 (E): arrow pointing right
+    [(3,0), (2,-1), (2,0), (2,1), (1,-1), (1,0), (1,1), (0,-2), (0,-1), (0,0), (0,1), (0,2)],
+    # Dir 3 (SE): arrow pointing lower-right
+    [(2,2), (2,1), (1,2), (1,1), (0,1), (1,0), (0,0), (-1,0), (-1,-1), (-2,-1), (0,-1), (-2,-2)],
+    # Dir 4 (S): arrow pointing down
+    [(0,3), (-1,2), (0,2), (1,2), (-1,1), (0,1), (1,1), (-2,0), (-1,0), (0,0), (1,0), (2,0)],
+    # Dir 5 (SW): arrow pointing lower-left
+    [(-2,2), (-1,2), (-2,1), (-1,1), (0,1), (-1,0), (0,0), (1,0), (1,-1), (2,-1), (0,-1), (2,-2)],
+    # Dir 6 (W): arrow pointing left
+    [(-3,0), (-2,-1), (-2,0), (-2,1), (-1,-1), (-1,0), (-1,1), (0,-2), (0,-1), (0,0), (0,1), (0,2)],
+    # Dir 7 (NW): arrow pointing upper-left
+    [(-2,-2), (-2,-1), (-1,-2), (-1,-1), (0,-1), (-1,0), (0,0), (1,0), (1,1), (2,1), (0,1), (2,2)],
 ]
 NUM_SHIP_POINTS = 12
 
@@ -412,18 +412,43 @@ for i in range(2):
 a.ret()
 
 a.label('init_wave')
+# Use rand8 for slightly random positions and speeds
 for i in range(8):
-    if i < len(INIT_ASTEROIDS):
-        x, y, dx, dy = INIT_ASTEROIDS[i]
+    if i < 4:
+        # Active asteroids with randomized position/speed
         store_imm(ast_lbl(i, 'active'), 1)
-        store_imm(ast_lbl(i, 'x'), x)
-        store_imm(ast_lbl(i, 'y'), y)
-        store_imm(ast_lbl(i, 'old_x'), x)
-        store_imm(ast_lbl(i, 'old_y'), y)
-        store_imm(ast_lbl(i, 'dx'), s8(dx))
-        store_imm(ast_lbl(i, 'dy'), s8(dy))
         store_imm(ast_lbl(i, 'size'), 2)
         store_imm(ast_lbl(i, 'timer'), 0)
+        # Random X position: call rand8, mask to 0-63
+        a.call('rand8')
+        a.and_n(0x3F)
+        a.ld_lbl_a(ast_lbl(i, 'x'))
+        a.ld_lbl_a(ast_lbl(i, 'old_x'))
+        # Random Y position
+        a.call('rand8')
+        a.and_n(0x3F)
+        a.ld_lbl_a(ast_lbl(i, 'y'))
+        a.ld_lbl_a(ast_lbl(i, 'old_y'))
+        # Random DX: -1 or +1 (bit0 of rand8)
+        a.call('rand8')
+        a.and_n(0x01)
+        a.jp('z', f'iw_dxneg_{i}')
+        a.ld_r_n('a', 1)
+        a.jp(f'iw_dxdone_{i}')
+        a.label(f'iw_dxneg_{i}')
+        a.ld_r_n('a', s8(-1))
+        a.label(f'iw_dxdone_{i}')
+        a.ld_lbl_a(ast_lbl(i, 'dx'))
+        # Random DY: -1 or +1
+        a.call('rand8')
+        a.and_n(0x01)
+        a.jp('z', f'iw_dyneg_{i}')
+        a.ld_r_n('a', 1)
+        a.jp(f'iw_dydone_{i}')
+        a.label(f'iw_dyneg_{i}')
+        a.ld_r_n('a', s8(-1))
+        a.label(f'iw_dydone_{i}')
+        a.ld_lbl_a(ast_lbl(i, 'dy'))
     else:
         store_imm(ast_lbl(i, 'active'), 0)
         store_imm(ast_lbl(i, 'x'), 0)
