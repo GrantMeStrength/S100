@@ -768,7 +768,7 @@ a.push('hl')             # save pointer to dir byte
 # First try current dir
 a.ld_a_lbl('tmp_gdir')
 a.cp_n(DIR_NONE)
-a.jr('z', 'mg_pick')
+a.jp('z', 'mg_pick')
 
 # Try current direction
 a.push('bc')
@@ -802,25 +802,107 @@ a.and_n(0x0F)
 a.ld_r_r('c', 'a')
 a.call('is_wall')
 a.pop('bc')              # restore original pos
-a.jr('nz', 'mg_pick')   # wall → need new direction
+a.jp('nz', 'mg_pick')   # wall → need new direction
 
 # Current dir is free — move
 a.ld_a_lbl('tmp_gdir')
-a.jr('mg_apply')
+a.jp('mg_apply')
 
 a.label('mg_pick')
-# Pick a random direction that's not a wall
-# Try up to 4 random directions
-a.ld_r_n('d', 4)        # attempts
-a.label('mg_try')
+# Chase AI: compute preferred directions toward player, try those first
+# B = ghost x, C = ghost y (on stack via push bc in attempts)
+# Build priority list: [preferred_x_dir, preferred_y_dir, other_x, other_y]
+# Store 4 directions to try in order
+
+# Compute preferred X direction
+a.ld_a_lbl('px')
+a.cp_r('b')               # px - ghost_x
+a.jr('z', 'mg_xeq')
+a.jr('c', 'mg_xleft')     # px < ghost_x → go left
+a.ld_r_n('a', DIR_RIGHT)
+a.ld_lbl_a('chase_d0')
+a.ld_r_n('a', DIR_LEFT)
+a.ld_lbl_a('chase_d2')
+a.jr('mg_ychase')
+a.label('mg_xleft')
+a.ld_r_n('a', DIR_LEFT)
+a.ld_lbl_a('chase_d0')
+a.ld_r_n('a', DIR_RIGHT)
+a.ld_lbl_a('chase_d2')
+a.jr('mg_ychase')
+a.label('mg_xeq')
+# X equal — put horizontal dirs as low priority
+a.ld_r_n('a', DIR_RIGHT)
+a.ld_lbl_a('chase_d0')
+a.ld_r_n('a', DIR_LEFT)
+a.ld_lbl_a('chase_d2')
+
+a.label('mg_ychase')
+# Compute preferred Y direction
+a.ld_a_lbl('py')
+a.cp_r('c')               # py - ghost_y
+a.jr('z', 'mg_yeq')
+a.jr('c', 'mg_yup')       # py < ghost_y → go up
+a.ld_r_n('a', DIR_DOWN)
+a.ld_lbl_a('chase_d1')
+a.ld_r_n('a', DIR_UP)
+a.ld_lbl_a('chase_d3')
+a.jr('mg_trylist')
+a.label('mg_yup')
+a.ld_r_n('a', DIR_UP)
+a.ld_lbl_a('chase_d1')
+a.ld_r_n('a', DIR_DOWN)
+a.ld_lbl_a('chase_d3')
+a.jr('mg_trylist')
+a.label('mg_yeq')
+a.ld_r_n('a', DIR_UP)
+a.ld_lbl_a('chase_d1')
+a.ld_r_n('a', DIR_DOWN)
+a.ld_lbl_a('chase_d3')
+
+a.label('mg_trylist')
+# Add randomness: 25% chance to swap first two priorities
 a.push('bc')
 a.push('de')
 a.call('rand')
-a.and_n(0x03)            # 0-3
-a.ld_lbl_a('tmp_gdir')
-# Apply this direction
 a.pop('de')
 a.pop('bc')
+a.and_n(0x03)
+a.jr('nz', 'mg_noswap')   # 75% keep priority order
+# Swap d0 and d1
+a.ld_a_lbl('chase_d0')
+a.ld_r_r('d', 'a')
+a.ld_a_lbl('chase_d1')
+a.ld_lbl_a('chase_d0')
+a.ld_r_r('a', 'd')
+a.ld_lbl_a('chase_d1')
+a.label('mg_noswap')
+
+# Try each of the 4 priority directions
+a.ld_r_n('d', 0)          # index into chase_d0..d3
+a.label('mg_try')
+# Load direction[d] from chase list
+a.ld_r_r('a', 'd')
+a.or_r('a')
+a.jp('nz', 'mg_ld1')
+a.ld_a_lbl('chase_d0')
+a.jp('mg_ldok')
+a.label('mg_ld1')
+a.cp_n(1)
+a.jp('nz', 'mg_ld2')
+a.ld_a_lbl('chase_d1')
+a.jp('mg_ldok')
+a.label('mg_ld2')
+a.cp_n(2)
+a.jp('nz', 'mg_ld3')
+a.ld_a_lbl('chase_d2')
+a.jp('mg_ldok')
+a.label('mg_ld3')
+a.ld_a_lbl('chase_d3')
+a.label('mg_ldok')
+a.ld_lbl_a('tmp_gdir')
+
+# Apply direction to test position
 a.push('bc')
 a.push('de')
 a.ld_a_lbl('tmp_gdir')
@@ -851,11 +933,14 @@ a.ld_r_r('c', 'a')
 a.call('is_wall')
 a.pop('de')
 a.pop('bc')
-a.jr('z', 'mg_found')   # Z = path = free!
+a.jp('z', 'mg_found')     # Z = path = free!
 
-# Still blocked, try again
-a.dec_r('d')
-a.jr('nz', 'mg_try')
+# Try next direction in list
+a.inc_r('d')
+a.ld_r_r('a', 'd')
+a.cp_n(4)
+a.jp('c', 'mg_try')
+
 # All attempts failed — ghost stays put
 a.pop('hl')
 a.ret()
@@ -1551,6 +1636,10 @@ a.label('in_btn');     a.db(0xFF)
 
 a.label('tmp_dir');    a.db(0)
 a.label('tmp_gdir');   a.db(0)
+a.label('chase_d0');   a.db(0)
+a.label('chase_d1');   a.db(0)
+a.label('chase_d2');   a.db(0)
+a.label('chase_d3');   a.db(0)
 
 # Ghost data: 3 ghosts × 3 bytes (x, y, dir)
 a.label('ghost_data')

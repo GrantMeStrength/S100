@@ -505,6 +505,11 @@ a.in_a(DAZ_NX)
 a.ld_lbl_a('rng')
 
 a.label('restart')
+# Re-init Dazzler (ensure display mode is correct after reset)
+a.ld_r_n('a', 0x30)
+a.out_a(DAZ_NY)
+a.ld_r_n('a', 0x80 | FB_PAGE)
+a.out_a(DAZ_NX)
 a.call('init_game')
 
 a.label('main_loop')
@@ -788,10 +793,22 @@ a.ld_r_n('a', 1)
 a.ld_lbl_a('city0_alive')
 a.ld_lbl_a('city1_alive')
 a.ld_lbl_a('city2_alive')
-for prefix, count in [('enemy', ENEMY_SLOTS), ('cm', COUNTER_SLOTS), ('ex', EXP_SLOTS)]:
+for prefix, count in [('enemy', ENEMY_SLOTS), ('ex', EXP_SLOTS)]:
     for i in range(count):
         a.xor_r('a')
         a.ld_lbl_a(f'{prefix}{i}_active')
+# Zero all counter-missile state (active + trajectory fields)
+for i in range(COUNTER_SLOTS):
+    a.xor_r('a')
+    a.ld_lbl_a(f'cm{i}_active')
+    a.ld_lbl_a(f'cm{i}_x')
+    a.ld_lbl_a(f'cm{i}_y')
+    a.ld_lbl_a(f'cm{i}_tx')
+    a.ld_lbl_a(f'cm{i}_ty')
+    a.ld_lbl_a(f'cm{i}_dx')
+    a.ld_lbl_a(f'cm{i}_dy')
+    a.ld_lbl_a(f'cm{i}_sx')
+    a.ld_lbl_a(f'cm{i}_err')
 if True:
     a.call('start_wave1')
     a.call('redraw_static')

@@ -426,8 +426,84 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     }),
   },
   {
-    // MITS Altair BASIC Rev. 4.0 (Eight-K Version) — copyright 1976 by MITS Inc.
-    // ROM card holds BASIC at 0xC000. On Run, the toggle injects a copy loop at 0xFF00
+    // BREAKOUT — a brick-breaker game.
+    // Standalone Z80 binary. Uses Dazzler 64×64 color mode
+    // and D+7A joystick (port 0x18 buttons, port 0x19 X-axis).
+    // Joystick X = move paddle, Button 2 = launch ball, Button 1 = exit to CP/M.
+    id: 'breakout',
+    label: 'Breakout — Dazzler Game',
+    binaryUrl: pub('/BREAKOUT.COM'),
+    binaryLoadAddr: 0x0100,
+    startupPc: 0x0100,
+    machine: JSON.stringify({
+      name: 'Breakout (Dazzler)',
+      slots: [
+        { slot: 0, card: 'cpu_z80',  params: { speed_hz: 4_000_000 } },
+        { slot: 1, card: 'ram',      params: { base: 0, size: 65536 } },
+        { slot: 2, card: 'dazzler' },
+        { slot: 3, card: 'joystick', params: { base_port: 0x18, button_port: 0x42 } },
+      ],
+    }),
+  },
+  {
+    // LANDER — a Lunar Lander game.
+    // Standalone Z80 binary. Uses Dazzler 64×64 color mode
+    // and D+7A joystick (port 0x18 buttons, port 0x19 X-axis).
+    // Joystick X = tilt, Button 2 = thrust, Button 1 = exit to CP/M.
+    id: 'lander',
+    label: 'Lunar Lander — Dazzler Game',
+    binaryUrl: pub('/LANDER.COM'),
+    binaryLoadAddr: 0x0100,
+    startupPc: 0x0100,
+    machine: JSON.stringify({
+      name: 'Lunar Lander (Dazzler)',
+      slots: [
+        { slot: 0, card: 'cpu_z80',  params: { speed_hz: 4_000_000 } },
+        { slot: 1, card: 'ram',      params: { base: 0, size: 65536 } },
+        { slot: 2, card: 'dazzler' },
+        { slot: 3, card: 'joystick', params: { base_port: 0x18, button_port: 0x42 } },
+      ],
+    }),
+  },
+  {
+    // ASTEROIDS — an Asteroids-style space shooter game.
+    // Standalone Z80 binary. Uses Dazzler 64×64 color mode
+    // and D+7A joystick. Joystick X = rotate, Y up = thrust, Button 2 = fire, Button 1 = exit.
+    id: 'asteroids',
+    label: 'Asteroids — Dazzler Game',
+    binaryUrl: pub('/ASTEROIDS.COM'),
+    binaryLoadAddr: 0x0100,
+    startupPc: 0x0100,
+    machine: JSON.stringify({
+      name: 'Asteroids (Dazzler)',
+      slots: [
+        { slot: 0, card: 'cpu_z80',  params: { speed_hz: 4_000_000 } },
+        { slot: 1, card: 'ram',      params: { base: 0, size: 65536 } },
+        { slot: 2, card: 'dazzler' },
+        { slot: 3, card: 'joystick', params: { base_port: 0x18, button_port: 0x42 } },
+      ],
+    }),
+  },
+  {
+    // FROGGER — a Frogger-style road/river crossing game.
+    // Standalone Z80 binary. Uses Dazzler 64×64 color mode
+    // and D+7A joystick. Joystick = hop direction, Button 1 = exit.
+    id: 'frogger',
+    label: 'Frogger — Dazzler Game',
+    binaryUrl: pub('/FROGGER.COM'),
+    binaryLoadAddr: 0x0100,
+    startupPc: 0x0100,
+    machine: JSON.stringify({
+      name: 'Frogger (Dazzler)',
+      slots: [
+        { slot: 0, card: 'cpu_z80',  params: { speed_hz: 4_000_000 } },
+        { slot: 1, card: 'ram',      params: { base: 0, size: 65536 } },
+        { slot: 2, card: 'dazzler' },
+        { slot: 3, card: 'joystick', params: { base_port: 0x18, button_port: 0x42 } },
+      ],
+    }),
+  },
+  {
     // that copies the 8 KB from ROM (0xC000) into RAM (0x0000), then jumps to 0x0000.
     // Uses 88-SIO: status on port 0x00 (active-low RX), data on port 0x01.
     // seven_bit strips bit 7 from TX bytes — BASIC sets bit 7 on tokenised keyword initials.
