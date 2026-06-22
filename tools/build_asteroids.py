@@ -187,22 +187,22 @@ BULLET_DY = [-2, -2, 0, 2, 2, 2, 0, -2]
 # Ship shapes: 8 directions, each 7 points (dx,dy). Smaller but still visible triangle.
 # Tip + 2 mid + 4 base = 7 pixels per direction
 SHIP_SHAPES = [
-    # Dir 0 (N): arrow pointing up
-    [(0,-3), (-1,-2), (0,-2), (1,-2), (-1,-1), (0,-1), (1,-1), (-2,0), (-1,0), (0,0), (1,0), (2,0)],
+    # Dir 0 (N): arrow pointing up - 4 rows
+    [(0,-3), (-1,-2), (0,-2), (1,-2), (-2,-1), (-1,-1), (0,-1), (1,-1), (2,-1), (-1,0), (0,0), (1,0)],
     # Dir 1 (NE): arrow pointing upper-right
-    [(2,-2), (1,-2), (2,-1), (0,-1), (1,-1), (1,0), (-1,0), (0,0), (-1,1), (-2,1), (0,1), (-2,2)],
-    # Dir 2 (E): arrow pointing right
-    [(3,0), (2,-1), (2,0), (2,1), (1,-1), (1,0), (1,1), (0,-2), (0,-1), (0,0), (0,1), (0,2)],
+    [(2,-2), (1,-2), (2,-1), (1,-1), (0,-1), (0,0), (1,0), (-1,0), (-1,1), (0,1), (-2,1), (-2,2)],
+    # Dir 2 (E): arrow pointing right - 4 cols
+    [(3,0), (2,-1), (2,0), (2,1), (1,-2), (1,-1), (1,0), (1,1), (1,2), (0,-1), (0,0), (0,1)],
     # Dir 3 (SE): arrow pointing lower-right
-    [(2,2), (2,1), (1,2), (1,1), (0,1), (1,0), (0,0), (-1,0), (-1,-1), (-2,-1), (0,-1), (-2,-2)],
-    # Dir 4 (S): arrow pointing down
-    [(0,3), (-1,2), (0,2), (1,2), (-1,1), (0,1), (1,1), (-2,0), (-1,0), (0,0), (1,0), (2,0)],
+    [(2,2), (2,1), (1,2), (1,1), (1,0), (0,0), (0,1), (0,-1), (-1,-1), (-1,0), (-2,-1), (-2,-2)],
+    # Dir 4 (S): arrow pointing down - 4 rows
+    [(0,3), (-1,2), (0,2), (1,2), (-2,1), (-1,1), (0,1), (1,1), (2,1), (-1,0), (0,0), (1,0)],
     # Dir 5 (SW): arrow pointing lower-left
-    [(-2,2), (-1,2), (-2,1), (-1,1), (0,1), (-1,0), (0,0), (1,0), (1,-1), (2,-1), (0,-1), (2,-2)],
-    # Dir 6 (W): arrow pointing left
-    [(-3,0), (-2,-1), (-2,0), (-2,1), (-1,-1), (-1,0), (-1,1), (0,-2), (0,-1), (0,0), (0,1), (0,2)],
+    [(-2,2), (-1,2), (-2,1), (-1,1), (0,1), (0,0), (-1,0), (1,0), (1,-1), (0,-1), (2,-1), (2,-2)],
+    # Dir 6 (W): arrow pointing left - 4 cols
+    [(-3,0), (-2,-1), (-2,0), (-2,1), (-1,-2), (-1,-1), (-1,0), (-1,1), (-1,2), (0,-1), (0,0), (0,1)],
     # Dir 7 (NW): arrow pointing upper-left
-    [(-2,-2), (-2,-1), (-1,-2), (-1,-1), (0,-1), (-1,0), (0,0), (1,0), (1,1), (2,1), (0,1), (2,2)],
+    [(-2,-2), (-2,-1), (-1,-2), (-1,-1), (-1,0), (0,0), (0,-1), (0,1), (1,1), (1,0), (2,1), (2,2)],
 ]
 NUM_SHIP_POINTS = 12
 
@@ -322,12 +322,14 @@ def emit_spawn_bullet(slot):
     a.label(done)
 
 
-def emit_asteroid_hit_check(point_x_reg, point_y_reg, slot, miss_label):
+def emit_asteroid_hit_check(point_x_reg, point_y_reg, slot, miss_label, extra_radius=0):
     a.ld_a_lbl(ast_lbl(slot, 'active'))
     a.or_r('a')
     a.jp('z', miss_label)
     a.ld_a_lbl(ast_lbl(slot, 'size'))
     a.inc_r('a')
+    if extra_radius:
+        a.add_a_n(extra_radius)
     a.ld_r_r('c', 'a')
     a.ld_a_lbl(ast_lbl(slot, 'x'))
     a.ld_r_r('b', 'a')
@@ -742,7 +744,7 @@ a.ret()
 a.label('ship_collision_point')
 for ai in range(8):
     miss = f'scp_{ai}_miss'
-    emit_asteroid_hit_check('d', 'e', ai, miss)
+    emit_asteroid_hit_check('d', 'e', ai, miss, extra_radius=3)
     a.call('lose_life')
     a.ld_r_n('a', 1)
     a.ret()
@@ -870,7 +872,15 @@ a.jp('z', 'draw_ast_medium')
 a.jp('draw_ast_large')
 
 a.label('draw_ast_small')
+# Draw 2x2 block (4 pixels)
 a.call('plot')
+a.inc_r('d')
+a.call('plot')
+a.inc_r('e')
+a.call('plot')
+a.dec_r('d')
+a.call('plot')
+a.dec_r('e')
 a.ret()
 
 a.label('draw_ast_medium')

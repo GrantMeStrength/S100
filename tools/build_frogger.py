@@ -195,10 +195,10 @@ ROAD_LANES = [
 ]
 
 RIVER_LANES = [
-    dict(idx=5, y=48, w=12, color=YELLOW, bg=BLUE,  dir='right', speed=4, xs=[0, 24, 48]),
-    dict(idx=6, y=40, w=8,  color=YELLOW, bg=BLUE,  dir='left',  speed=3, xs=[10, 30, 50]),
-    dict(idx=7, y=32, w=10, color=YELLOW, bg=BLUE,  dir='right', speed=4, xs=[4, 26, 48]),
-    dict(idx=8, y=24, w=6,  color=GREEN,  bg=BLUE,  dir='left',  speed=3, xs=[8, 30, 52]),
+    dict(idx=5, y=48, w=14, color=YELLOW, bg=BLUE,  dir='right', speed=4, xs=[0, 22, 44]),
+    dict(idx=6, y=40, w=12, color=YELLOW, bg=BLUE,  dir='left',  speed=3, xs=[8, 30, 52]),
+    dict(idx=7, y=32, w=12, color=YELLOW, bg=BLUE,  dir='right', speed=4, xs=[4, 26, 48]),
+    dict(idx=8, y=24, w=10, color=GREEN,  bg=BLUE,  dir='left',  speed=3, xs=[6, 28, 50]),
 ]
 
 ALL_LANES = ROAD_LANES + RIVER_LANES
@@ -366,7 +366,7 @@ a.jp('main_loop')
 # ═══════════════════════════════════════════════════════════════════════════════
 
 a.label('init_game')
-a.ld_r_n('a', 3)
+a.ld_r_n('a', 5)
 a.ld_lbl_a('lives')
 a.ld_r_n('a', 1)
 a.ld_lbl_a('level')
@@ -578,7 +578,7 @@ a.inc_r('e')
 a.ld_r_n('b', FROG_W)
 a.call('hline')
 a.inc_r('e')
-a.ld_r_n('c', YELLOW)
+a.ld_r_n('c', BRIGHT_RED)
 a.call('plot')
 a.ld_r_r('a', 'd')
 a.add_a_n(FROG_W - 1)
