@@ -485,6 +485,25 @@ export const SYSTEM_PRESETS: SystemPreset[] = [
     }),
   },
   {
+    // ASTEROIDS HI-RES — a high-resolution Asteroids-style space shooter game.
+    // Standalone Z80 binary. Uses Dazzler 128×128 monochrome hires mode
+    // and D+7A joystick. Joystick X = rotate, Y up = thrust, Button 2 = fire, Button 1 = exit.
+    id: 'asteroids_hires',
+    label: 'Asteroids Hi-Res — Dazzler Game',
+    binaryUrl: pub('/ASTEROIDSHI.COM'),
+    binaryLoadAddr: 0x0100,
+    startupPc: 0x0100,
+    machine: JSON.stringify({
+      name: 'Asteroids Hi-Res (Dazzler)',
+      slots: [
+        { slot: 0, card: 'cpu_z80',  params: { speed_hz: 4_000_000 } },
+        { slot: 1, card: 'ram',      params: { base: 0, size: 65536 } },
+        { slot: 2, card: 'dazzler' },
+        { slot: 3, card: 'joystick', params: { base_port: 0x18, button_port: 0x42 } },
+      ],
+    }),
+  },
+  {
     // FROGGER — a Frogger-style road/river crossing game.
     // Standalone Z80 binary. Uses Dazzler 64×64 color mode
     // and D+7A joystick. Joystick = hop direction, Button 1 = exit.
