@@ -181,8 +181,8 @@ BRIGHT_WHITE = WHITE | BRIGHT
 
 DIR_DX = [0, 1, 1, 1, 0, -1, -1, -1]
 DIR_DY = [-1, -1, 0, 1, 1, 1, 0, -1]
-BULLET_DX = [0, 4, 4, 4, 0, -4, -4, -4]
-BULLET_DY = [-4, -4, 0, 4, 4, 4, 0, -4]
+BULLET_DX = [0, 3, 3, 3, 0, -3, -3, -3]
+BULLET_DY = [-3, -3, 0, 3, 3, 3, 0, -3]
 
 # Ship shapes: 8 directions, each 7 points (dx,dy). Smaller but still visible triangle.
 # Tip + 2 mid + 4 base = 7 pixels per direction
@@ -222,21 +222,15 @@ AST_MED_POINTS = [
 ]
 
 
-def scale_points(points, factor=2):
-    return [(x * factor, y * factor) for x, y in points]
-
-
-SHIP_SHAPES = [scale_points(points) for points in SHIP_SHAPES]
-AST_LARGE_POINTS = scale_points(AST_LARGE_POINTS)
-AST_MED_POINTS = scale_points(AST_MED_POINTS)
-AST_SMALL_POINTS = [(dx, dy) for dy in range(4) for dx in range(4)]
+# No scaling — keep original shapes so objects appear smaller on the larger 128×128 display
+AST_SMALL_POINTS = [(0,0), (1,0), (0,1), (1,1)]  # 2×2 block
 BULLET_POINTS = [(0,0), (1,0), (0,1), (1,1)]
 
 INIT_ASTEROIDS = [
-    (8, 8, 1, 1),
-    (55, 8, -1, 1),
-    (8, 55, 1, -1),
-    (55, 55, -1, -1),
+    (16, 16, 1, 1),
+    (110, 16, -1, 1),
+    (16, 110, 1, -1),
+    (110, 110, -1, -1),
 ]
 
 a = Z80()
