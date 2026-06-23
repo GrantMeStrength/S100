@@ -207,11 +207,12 @@ SHIP_SHAPES = [
 NUM_SHIP_POINTS = 13
 
 AST_LARGE_POINTS = [
-    # Irregular polygon outline with notch (like classic Asteroids)
-    (0,-3), (-1,-3), (-2,-2), (-3,-1), (-3,0), (-3,1),
-    (-2,2), (-1,3), (0,3), (1,3),
-    (2,2), (3,1), (2,0), (3,-1), (3,-2),
-    (2,-2), (1,-3),
+    # Ring shape with two dents (like classic Asteroids)
+    (-1,-3), (0,-3), (1,-3), (2,-3), (3,-2), (3,-1), (3,0),
+    (2,0), (1,0),  # dent inward on right
+    (3,1), (3,2), (2,3), (1,3), (0,3), (-1,3),
+    (-1,2), (-1,1),  # dent inward on lower-left
+    (-2,1), (-3,1), (-3,0), (-3,-1), (-3,-2), (-2,-3),
 ]
 AST_MED_POINTS = [
     # Smaller irregular polygon outline
