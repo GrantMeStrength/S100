@@ -152,8 +152,9 @@ fn render_hires_quadrant(
             for &(px, py, bit) in &bits {
                 if bit != 0 {
                     set_pixel(rgba, stride, px, py, [fr, fg, fb, 255]);
+                } else {
+                    set_pixel(rgba, stride, px, py, [0, 0, 0, 255]);
                 }
-                // else: pixel stays black (initialized to 0)
             }
             x += 4;
             addr += 1;
