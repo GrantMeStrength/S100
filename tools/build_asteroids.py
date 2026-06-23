@@ -416,7 +416,11 @@ for i in range(2):
 a.ret()
 
 a.label('init_wave')
-# Use rand8 for random positions and varied directions
+# Use rand8 for random positions; assign varied directions per asteroid
+# Direction table: ensure all 4 start asteroids move differently
+# Asteroid 0: (+1,+1), 1: (-1,+1), 2: (+1,-1), 3: (-1,-1) base
+# Then randomly flip one axis per asteroid for extra variety
+INIT_DIRS = [(1,1), (-1,1), (1,-1), (-1,-1)]
 for i in range(8):
     if i < 4:
         store_imm(ast_lbl(i, 'active'), 1)
@@ -432,44 +436,22 @@ for i in range(8):
         a.and_n(0x3F)
         a.ld_lbl_a(ast_lbl(i, 'y'))
         a.ld_lbl_a(ast_lbl(i, 'old_y'))
-        # Random DX: -1, 0, or +1 (use bits 0-1: 0→-1, 1→0, 2→+1, 3→+1)
+        # Base direction for this asteroid (guaranteed different)
+        base_dx, base_dy = INIT_DIRS[i]
+        store_imm(ast_lbl(i, 'dx'), s8(base_dx) if base_dx < 0 else base_dx)
+        store_imm(ast_lbl(i, 'dy'), s8(base_dy) if base_dy < 0 else base_dy)
+        # Randomly zero out one axis (25% chance each) for variety
         a.call('rand8')
         a.and_n(0x03)
-        a.jp('z', f'iw_dxneg_{i}')
+        a.jp('z', f'iw_zerox_{i}')   # 0 → zero dx (vertical only)
         a.cp_n(1)
-        a.jp('z', f'iw_dx0_{i}')
-        a.ld_r_n('a', 1)
-        a.jp(f'iw_dxdone_{i}')
-        a.label(f'iw_dxneg_{i}')
-        a.ld_r_n('a', s8(-1))
-        a.jp(f'iw_dxdone_{i}')
-        a.label(f'iw_dx0_{i}')
-        a.xor_r('a')
-        a.label(f'iw_dxdone_{i}')
-        a.ld_lbl_a(ast_lbl(i, 'dx'))
-        # Random DY: -1, 0, or +1
-        a.call('rand8')
-        a.and_n(0x03)
-        a.jp('z', f'iw_dyneg_{i}')
-        a.cp_n(1)
-        a.jp('z', f'iw_dy0_{i}')
-        a.ld_r_n('a', 1)
-        a.jp(f'iw_dydone_{i}')
-        a.label(f'iw_dyneg_{i}')
-        a.ld_r_n('a', s8(-1))
-        a.jp(f'iw_dydone_{i}')
-        a.label(f'iw_dy0_{i}')
-        a.xor_r('a')
-        a.label(f'iw_dydone_{i}')
-        a.ld_lbl_a(ast_lbl(i, 'dy'))
-        # If both dx and dy are 0, force dx=1
-        a.ld_a_lbl(ast_lbl(i, 'dx'))
-        a.or_r('a')
-        a.jp('nz', f'iw_ok_{i}')
-        a.ld_a_lbl(ast_lbl(i, 'dy'))
-        a.or_r('a')
-        a.jp('nz', f'iw_ok_{i}')
-        store_imm(ast_lbl(i, 'dx'), 1)
+        a.jp('z', f'iw_zeroy_{i}')   # 1 → zero dy (horizontal only)
+        a.jp(f'iw_ok_{i}')           # 2,3 → keep diagonal
+        a.label(f'iw_zerox_{i}')
+        store_imm(ast_lbl(i, 'dx'), 0)
+        a.jp(f'iw_ok_{i}')
+        a.label(f'iw_zeroy_{i}')
+        store_imm(ast_lbl(i, 'dy'), 0)
         a.label(f'iw_ok_{i}')
     else:
         store_imm(ast_lbl(i, 'active'), 0)
