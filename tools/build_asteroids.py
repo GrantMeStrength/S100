@@ -207,12 +207,13 @@ SHIP_SHAPES = [
 NUM_SHIP_POINTS = 13
 
 AST_LARGE_POINTS = [
-    # Ring shape with two dents (like classic Asteroids)
-    (-1,-3), (0,-3), (1,-3), (2,-3), (3,-2), (3,-1), (3,0),
-    (2,0), (1,0),  # dent inward on right
-    (3,1), (3,2), (2,3), (1,3), (0,3), (-1,3),
-    (-1,2), (-1,1),  # dent inward on lower-left
-    (-2,1), (-3,1), (-3,0), (-3,-1), (-3,-2), (-2,-3),
+    # Circle with two dents on the right side (classic Asteroids look)
+    (-1,-3), (0,-3), (1,-3), (2,-3), (3,-2),
+    (2,-1),  # dent 1 inward
+    (3,0),
+    (2,1),   # dent 2 inward
+    (3,2), (2,2), (1,3), (0,3), (-1,3), (-2,3),
+    (-3,2), (-3,1), (-3,0), (-3,-1), (-3,-2), (-2,-2),
 ]
 AST_MED_POINTS = [
     # Smaller irregular polygon outline
@@ -415,14 +416,13 @@ for i in range(2):
 a.ret()
 
 a.label('init_wave')
-# Use rand8 for slightly random positions and speeds
+# Use rand8 for random positions and varied directions
 for i in range(8):
     if i < 4:
-        # Active asteroids with randomized position/speed
         store_imm(ast_lbl(i, 'active'), 1)
         store_imm(ast_lbl(i, 'size'), 2)
         store_imm(ast_lbl(i, 'timer'), 0)
-        # Random X position: call rand8, mask to 0-63
+        # Random X position
         a.call('rand8')
         a.and_n(0x3F)
         a.ld_lbl_a(ast_lbl(i, 'x'))
@@ -432,26 +432,45 @@ for i in range(8):
         a.and_n(0x3F)
         a.ld_lbl_a(ast_lbl(i, 'y'))
         a.ld_lbl_a(ast_lbl(i, 'old_y'))
-        # Random DX: -1 or +1 (bit0 of rand8)
+        # Random DX: -1, 0, or +1 (use bits 0-1: 0→-1, 1→0, 2→+1, 3→+1)
         a.call('rand8')
-        a.and_n(0x01)
+        a.and_n(0x03)
         a.jp('z', f'iw_dxneg_{i}')
+        a.cp_n(1)
+        a.jp('z', f'iw_dx0_{i}')
         a.ld_r_n('a', 1)
         a.jp(f'iw_dxdone_{i}')
         a.label(f'iw_dxneg_{i}')
         a.ld_r_n('a', s8(-1))
+        a.jp(f'iw_dxdone_{i}')
+        a.label(f'iw_dx0_{i}')
+        a.xor_r('a')
         a.label(f'iw_dxdone_{i}')
         a.ld_lbl_a(ast_lbl(i, 'dx'))
-        # Random DY: -1 or +1
+        # Random DY: -1, 0, or +1
         a.call('rand8')
-        a.and_n(0x01)
+        a.and_n(0x03)
         a.jp('z', f'iw_dyneg_{i}')
+        a.cp_n(1)
+        a.jp('z', f'iw_dy0_{i}')
         a.ld_r_n('a', 1)
         a.jp(f'iw_dydone_{i}')
         a.label(f'iw_dyneg_{i}')
         a.ld_r_n('a', s8(-1))
+        a.jp(f'iw_dydone_{i}')
+        a.label(f'iw_dy0_{i}')
+        a.xor_r('a')
         a.label(f'iw_dydone_{i}')
         a.ld_lbl_a(ast_lbl(i, 'dy'))
+        # If both dx and dy are 0, force dx=1
+        a.ld_a_lbl(ast_lbl(i, 'dx'))
+        a.or_r('a')
+        a.jp('nz', f'iw_ok_{i}')
+        a.ld_a_lbl(ast_lbl(i, 'dy'))
+        a.or_r('a')
+        a.jp('nz', f'iw_ok_{i}')
+        store_imm(ast_lbl(i, 'dx'), 1)
+        a.label(f'iw_ok_{i}')
     else:
         store_imm(ast_lbl(i, 'active'), 0)
         store_imm(ast_lbl(i, 'x'), 0)
